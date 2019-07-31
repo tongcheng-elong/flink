@@ -43,24 +43,26 @@ under the License.
 		</resources>
 
         <plugins>
-			<plugin>
-				<!-- generate zip containing the flink python library -->
-				<groupId>org.apache.maven.plugins</groupId>
-				<artifactId>maven-assembly-plugin</artifactId>
-				<configuration>
-					<descriptor>src/assembly/python.xml</descriptor>
-					<finalName>python-source</finalName>
-					<appendAssemblyId>false</appendAssemblyId>
-				</configuration>
-				<executions>
-					<execution>
-						<phase>generate-resources</phase>
-						<goals>
-							<goal>single</goal>
-						</goals>
-					</execution>
-				</executions>
-			</plugin>
+<!--			<plugin>-->
+<!--				&lt;!&ndash; generate zip containing the flink python library &ndash;&gt;-->
+<!--				<groupId>org.apache.maven.plugins</groupId>-->
+<!--				<artifactId>maven-assembly-plugin</artifactId>-->
+<!--				<configuration>-->
+<!--					<descriptors>-->
+<!--						<descriptor>src/assembly/python.xml</descriptor>-->
+<!--					</descriptors>-->
+<!--					<finalName>python-source</finalName>-->
+<!--					<appendAssemblyId>false</appendAssemblyId>-->
+<!--				</configuration>-->
+<!--				<executions>-->
+<!--					<execution>-->
+<!--						<phase>generate-resources</phase>-->
+<!--						<goals>-->
+<!--							<goal>single</goal>-->
+<!--						</goals>-->
+<!--					</execution>-->
+<!--				</executions>-->
+<!--			</plugin>-->
 			
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>

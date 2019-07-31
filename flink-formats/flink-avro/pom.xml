@@ -81,30 +81,30 @@ under the License.
 
 	<build>
 		<plugins>
-			<plugin>
-				<artifactId>maven-assembly-plugin</artifactId>
-				<executions>
-					<execution>
-						<id>create-test-dependency</id>
-						<phase>process-test-classes</phase>
-						<goals>
-							<goal>single</goal>
-						</goals>
-						<configuration>
-							<archive>
-								<manifest>
-									<mainClass>org.apache.flink.formats.avro.testjar.AvroExternalJarProgram</mainClass>
-								</manifest>
-							</archive>
-							<finalName>maven</finalName>
-							<attach>false</attach>
-							<descriptors>
-								<descriptor>src/test/assembly/test-assembly.xml</descriptor>
-							</descriptors>
-						</configuration>
-					</execution>
-				</executions>
-			</plugin>
+<!--			<plugin>-->
+<!--				<artifactId>maven-assembly-plugin</artifactId>-->
+<!--				<executions>-->
+<!--					<execution>-->
+<!--						<id>create-test-dependency</id>-->
+<!--						<phase>process-test-classes</phase>-->
+<!--						<goals>-->
+<!--							<goal>single</goal>-->
+<!--						</goals>-->
+<!--						<configuration>-->
+<!--							<archive>-->
+<!--								<manifest>-->
+<!--									<mainClass>org.apache.flink.formats.avro.testjar.AvroExternalJarProgram</mainClass>-->
+<!--								</manifest>-->
+<!--							</archive>-->
+<!--							<finalName>maven</finalName>-->
+<!--							<attach>false</attach>-->
+<!--							<descriptors>-->
+<!--								<descriptor>src/test/assembly/test-assembly.xml</descriptor>-->
+<!--							</descriptors>-->
+<!--						</configuration>-->
+<!--					</execution>-->
+<!--				</executions>-->
+<!--			</plugin>-->
 			<!--Remove the AvroExternalJarProgram code from the test-classes directory since it musn't be in the
 			classpath when running the tests to actually test whether the user code class loader
 			is properly used.-->

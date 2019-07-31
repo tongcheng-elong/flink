@@ -31,15 +31,15 @@ export YARN_HOME=/work/BigData/install/hadoop/hadoop-2.6.0
 export YARN_HOME_DIR=/work/BigData/install/hadoop/hadoop-2.6.0/etc/hadoop
 
 
-cd /work/projects/BigDataArtisans/flink-projects/flink/flink-dist/target/flink-1.6.3-bin
+cd /work/projects/BigDataArtisans/flink-projects/flink/flink-dist/target/flink-1.5.5-bin
 
-mv flink-1.6.3 tc-flink-1.6.3-bin-hadoop27-scala_2.11
+mv flink-1.5.5 tc-flink-1.5.5-bin-hadoop27-scala_2.11
 
-\cp -rf tc-flink-1.6.3-bin-hadoop27-scala_2.11 /work/BigData/install/flink
+\cp -rf tc-flink-1.5.5-bin-hadoop27-scala_2.11 /work/BigData/install/flink
 
-\cp /work/BigData/install/flink/flink-1.8.1-bin/conf/flink-conf.yaml /work/BigData/install/flink/tc-flink-1.6.3-bin-hadoop27-scala_2.11/conf
+\cp /work/BigData/install/flink/flink-1.8.1-bin/conf/flink-conf.yaml /work/BigData/install/flink/tc-flink-1.5.5-bin-hadoop27-scala_2.11/conf
 
-cd /work/BigData/install/flink/tc-flink-1.6.3-bin-hadoop27-scala_2.11
+cd /work/BigData/install/flink/tc-flink-1.5.5-bin-hadoop27-scala_2.11
 
 bin/flink run -m yarn-cluster -d -yn 2 examples/streaming/SocketWindowWordCount.jar --hostname 10.101.52.39 --port 9999
 
