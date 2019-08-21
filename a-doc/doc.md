@@ -1,10 +1,14 @@
 
 
 ## 说明
+### 代码说明
 - 克隆代码之后，新建自己的分支，更新代码，然后推送到GIT
 - 线下机器 spslave28.bigdata.ly
 - 启动集群之后master地址: http://spslave28.bigdata.ly:8081
 
+### 官方地址
+- https://tianchi.aliyun.com/competition/entrance/231742/information
+- https://github.com/flink-tpc-ds
 
 ## 代码部分
 ### 克隆代码
