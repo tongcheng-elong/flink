@@ -37,13 +37,14 @@ mvn clean install -DskipTests=true -Dfast -T 2C -Dmaven.compile.fork=true
 ```
 
 ### 启动集群
+```
 cd /home/hadoop/flink/flink-dist/target/flink-1.9-tpcds-master-bin/flink-1.9-tpcds-master
 rm -rf log/*
 jps | grep JobManager | kill -9 `awk '{print $1}'`
 jps | grep TaskManager | kill -9 `awk '{print $1}'`
 bin/jobmanager.sh start
 bin/taskmanager.sh start
-
+```
 
 ### 测试1G数据
 ```
