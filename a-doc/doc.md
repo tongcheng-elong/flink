@@ -40,6 +40,19 @@ cd /home/hadoop/flink
 mvn clean install -DskipTests=true -Dfast -T 2C -Dmaven.compile.fork=true
 ```
 
+### 添加Parquet支持
+```
+cd /home/hadoop/flink/flink-dist/target/flink-1.9-tpcds-master-bin/flink-1.9-tpcds-master
+cp /work/JAVA_WORK/mvn_repo/repos/org/apache/parquet/parquet-column/1.8.2/parquet-column-1.8.2.jar lib/  
+cp /work/JAVA_WORK/mvn_repo/repos/org/apache/parquet/parquet-hadoop/1.8.2/parquet-hadoop-1.8.2.jar lib/  
+cp /work/JAVA_WORK/mvn_repo/repos/org/apache/parquet/parquet-common/1.8.2/parquet-common-1.8.2.jar lib/  
+cp /work/JAVA_WORK/mvn_repo/repos/org/apache/parquet/parquet-encoding/1.8.2/parquet-encoding-1.8.2.jar lib/  
+cp /work/JAVA_WORK/mvn_repo/repos/org/apache/parquet/parquet-format/2.3.1/parquet-format-2.3.1.jar lib/  
+cp /work/JAVA_WORK/mvn_repo/repos/org/codehaus/jackson/jackson-core-asl/1.8.8/jackson-core-asl-1.8.8.jar lib/  
+cp /work/JAVA_WORK/mvn_repo/repos/org/codehaus/jackson/jackson-mapper-asl/1.8.8/jackson-mapper-asl-1.8.8.jar lib/  
+cp /work/JAVA_WORK/mvn_repo/repos/org/apache/flink/flink-shaded-hadoop-2-uber/2.4.1-7.0/flink-shaded-hadoop-2-uber-2.4.1-7.0.jar lib/  
+```
+
 ### 启动集群
 ```
 cd /home/hadoop/flink/flink-dist/target/flink-1.9-tpcds-master-bin/flink-1.9-tpcds-master
@@ -60,7 +73,7 @@ run -c com.alibaba.flink.benchmark.perf.QueryBenchmark \
 --sqlQueries all \
 --numIters 1 \
 --sqlType tpcds \
---sourceType csv \
+--sourceType parquet \
 --optimizedPlanCollect true \
 --dumpFileOfOptimizedPlan /tmp/plan/tpcds \
 --operatorMetricCollect false \
@@ -86,3 +99,25 @@ run -c com.alibaba.flink.benchmark.perf.QueryBenchmark \
 --dumpFileOfPlanWithMetrics /tmp/metrics \
 --analyzeTable true
 ```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
