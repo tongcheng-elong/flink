@@ -57,7 +57,7 @@ cp /work/JAVA_WORK/mvn_repo/repos/org/apache/flink/flink-shaded-hadoop-2-uber/2.
 ```
 cd /home/hadoop/flink/flink-dist/target/flink-1.9-tpcds-master-bin/flink-1.9-tpcds-master
 rm -rf log/*
-jps | grep JobManager | kill -9 `awk '{print $1}'`
+jps | grep StandaloneSessionClusterEntrypoint | kill -9 `awk '{print $1}'`
 jps | grep TaskManager | kill -9 `awk '{print $1}'`
 bin/jobmanager.sh start
 bin/taskmanager.sh start
