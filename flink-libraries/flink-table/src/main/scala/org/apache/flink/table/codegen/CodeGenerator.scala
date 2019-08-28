@@ -1446,6 +1446,7 @@ abstract class CodeGenerator(
     val resultCode =
       s"""
         |long $resultTerm = $contextTerm.timerService().currentProcessingTime();
+        |$resultTerm = $resultTerm + java.util.TimeZone.getDefault().getOffset($resultTerm);
         |""".stripMargin
     GeneratedExpression(resultTerm, NEVER_NULL, resultCode, SqlTimeTypeInfo.TIMESTAMP)
   }
