@@ -47,6 +47,7 @@ import java.io.IOException;
 import java.io.StringWriter;
 import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
+import java.util.Arrays;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -80,9 +81,9 @@ class HistoryServerArchiveFetcher {
 	private final JobArchiveFetcherTask fetcherTask;
 	private final long refreshIntervalMillis;
 
-	HistoryServerArchiveFetcher(long refreshIntervalMillis, List<HistoryServer.RefreshLocation> refreshDirs, File webDir, CountDownLatch numFinishedPolls) {
+	HistoryServerArchiveFetcher(long refreshIntervalMillis, List<HistoryServer.RefreshLocation> refreshDirs, File webDir, Integer maxRetainSize, CountDownLatch numFinishedPolls) {
 		this.refreshIntervalMillis = refreshIntervalMillis;
-		this.fetcherTask = new JobArchiveFetcherTask(refreshDirs, webDir, numFinishedPolls);
+		this.fetcherTask = new JobArchiveFetcherTask(refreshDirs, webDir, maxRetainSize, numFinishedPolls);
 		if (LOG.isInfoEnabled()) {
 			for (HistoryServer.RefreshLocation refreshDir : refreshDirs) {
 				LOG.info("Monitoring directory {} for archived jobs.", refreshDir.getPath());
@@ -121,10 +122,11 @@ class HistoryServerArchiveFetcher {
 		private final File webDir;
 		private final File webJobDir;
 		private final File webOverviewDir;
+		private final int maxRetainSize;
 
 		private static final String JSON_FILE_ENDING = ".json";
 
-		JobArchiveFetcherTask(List<HistoryServer.RefreshLocation> refreshDirs, File webDir, CountDownLatch numFinishedPolls) {
+		JobArchiveFetcherTask(List<HistoryServer.RefreshLocation> refreshDirs, File webDir, Integer maxRetainSize, CountDownLatch numFinishedPolls) {
 			this.refreshDirs = checkNotNull(refreshDirs);
 			this.numFinishedPolls = numFinishedPolls;
 			this.cachedArchives = new HashSet<>();
@@ -133,6 +135,8 @@ class HistoryServerArchiveFetcher {
 			webJobDir.mkdir();
 			this.webOverviewDir = new File(webDir, "overviews");
 			webOverviewDir.mkdir();
+			this.maxRetainSize = maxRetainSize;
+
 		}
 
 		@Override
@@ -153,6 +157,43 @@ class HistoryServerArchiveFetcher {
 					if (jobArchives == null) {
 						continue;
 					}
+
+					// inverse sort by modify time
+					Arrays.sort(jobArchives,
+						(arch1, arch2) -> Long.compare(arch2.getModificationTime(), arch1.getModificationTime())
+					);
+
+					// max retain size
+					jobArchives = Arrays.copyOfRange(jobArchives, 0, maxRetainSize);
+
+					Arrays.asList(jobArchives).stream().forEach(x -> {
+						LOG.info(x.getPath().getName());
+					});
+
+					// jobs
+					Set<String> tmpJobIds = new HashSet<>();
+					for (FileStatus jobArchive : jobArchives) {
+						Path jobArchivePath = jobArchive.getPath();
+						String jobID = jobArchivePath.getName();
+						try {
+							JobID.fromHexString(jobID);
+						} catch (IllegalArgumentException iae) {
+							LOG.debug("Archive directory {} contained file with unexpected name {}. Ignoring file.",
+								refreshDir, jobID, iae);
+							continue;
+						}
+						if (tmpJobIds.size() <= maxRetainSize) {
+							tmpJobIds.add(jobID);
+						}
+					}
+
+					// clean up old job files
+					cachedArchives.forEach(x -> {
+						if (!tmpJobIds.contains(x)) {
+							cleanJobFiles(x);
+						}
+					});
+
 					boolean updateOverview = false;
 					for (FileStatus jobArchive : jobArchives) {
 						Path jobArchivePath = jobArchive.getPath();
@@ -203,22 +244,9 @@ class HistoryServerArchiveFetcher {
 								updateOverview = true;
 							} catch (IOException e) {
 								LOG.error("Failure while fetching/processing job archive for job {}.", jobID, e);
-								// Make sure we attempt to fetch the archive again
-								cachedArchives.remove(jobID);
-								// Make sure we do not include this job in the overview
-								try {
-									Files.delete(new File(webOverviewDir, jobID + JSON_FILE_ENDING).toPath());
-								} catch (IOException ioe) {
-									LOG.debug("Could not delete file from overview directory.", ioe);
-								}
 
-								// Clean up job files we may have created
-								File jobDirectory = new File(webJobDir, jobID);
-								try {
-									FileUtils.deleteDirectory(jobDirectory);
-								} catch (IOException ioe) {
-									LOG.debug("Could not clean up job directory.", ioe);
-								}
+								cleanJobFiles(jobID);
+
 							}
 						}
 					}
@@ -230,6 +258,27 @@ class HistoryServerArchiveFetcher {
 				LOG.error("Critical failure while fetching/processing job archives.", e);
 			}
 			numFinishedPolls.countDown();
+		}
+
+		private void cleanJobFiles(String jobID) {
+
+			// Make sure we attempt to fetch the archive again
+			cachedArchives.remove(jobID);
+
+			// Make sure we do not include this job in the overview
+			try {
+				Files.delete(new File(webOverviewDir, jobID + JSON_FILE_ENDING).toPath());
+			} catch (IOException ioe) {
+				LOG.debug("Could not delete file from overview directory.", ioe);
+			}
+
+			// Clean up job files we may have created
+			File jobDirectory = new File(webJobDir, jobID);
+			try {
+				FileUtils.deleteDirectory(jobDirectory);
+			} catch (IOException ioe) {
+				LOG.debug("Could not clean up job directory.", ioe);
+			}
 		}
 	}
 
@@ -249,7 +298,15 @@ class HistoryServerArchiveFetcher {
 
 		JsonNode tasks = job.get("tasks");
 		int numTasks = tasks.get("total").asInt();
-		int pending = tasks.get("pending").asInt();
+
+		int pending = 0;
+
+		try {
+			pending = tasks.get("pending").asInt();
+		} catch (Exception e) {
+			// ignore
+		}
+
 		int running = tasks.get("running").asInt();
 		int finished = tasks.get("finished").asInt();
 		int canceling = tasks.get("canceling").asInt();

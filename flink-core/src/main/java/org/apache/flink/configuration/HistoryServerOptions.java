@@ -79,6 +79,13 @@ public class HistoryServerOptions {
 			.defaultValue(10000L);
 
 	/**
+	 * The max retain jobs, control the size of smaill files (system inodes)
+	 */
+	public static final ConfigOption<Integer> HISTORY_SERVER_WEB_MAX_RETAIN_SIZE =
+		key("historyserver.web.max-retain.size")
+			.defaultValue(1000);
+
+	/**
 	 * Enables/Disables SSL support for the HistoryServer web-frontend. Only relevant if
 	 * {@link SecurityOptions#SSL_REST_ENABLED} is enabled.
 	 */

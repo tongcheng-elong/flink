@@ -87,6 +87,7 @@ public class HistoryServer {
 	private final int webPort;
 	private final long webRefreshIntervalMillis;
 	private final File webDir;
+	private final int maxRetainSize;
 
 	private final HistoryServerArchiveFetcher archiveFetcher;
 
@@ -159,6 +160,7 @@ public class HistoryServer {
 		webAddress = config.getString(HistoryServerOptions.HISTORY_SERVER_WEB_ADDRESS);
 		webPort = config.getInteger(HistoryServerOptions.HISTORY_SERVER_WEB_PORT);
 		webRefreshIntervalMillis = config.getLong(HistoryServerOptions.HISTORY_SERVER_WEB_REFRESH_INTERVAL);
+		maxRetainSize = config.getInteger(HistoryServerOptions.HISTORY_SERVER_WEB_MAX_RETAIN_SIZE);
 
 		String webDirectory = config.getString(HistoryServerOptions.HISTORY_SERVER_WEB_DIR);
 		if (webDirectory == null) {
@@ -187,7 +189,7 @@ public class HistoryServer {
 		}
 
 		long refreshIntervalMillis = config.getLong(HistoryServerOptions.HISTORY_SERVER_ARCHIVE_REFRESH_INTERVAL);
-		archiveFetcher = new HistoryServerArchiveFetcher(refreshIntervalMillis, refreshDirs, webDir, numFinishedPolls);
+		archiveFetcher = new HistoryServerArchiveFetcher(refreshIntervalMillis, refreshDirs, webDir, maxRetainSize, numFinishedPolls);
 
 		this.shutdownHook = ShutdownHookUtil.addShutdownHook(
 			HistoryServer.this::stop,
