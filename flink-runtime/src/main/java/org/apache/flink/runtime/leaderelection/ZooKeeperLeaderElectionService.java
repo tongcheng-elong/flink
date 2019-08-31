@@ -398,7 +398,7 @@ public class ZooKeeperLeaderElectionService implements LeaderElectionService, Le
 				break;
 			case SUSPENDED:
 				LOG.warn("Connection to ZooKeeper suspended. The contender " + leaderContender.getAddress()
-					+ " no longer participates in the leader election.");
+					+ " is waiting for reconnection.");
 				break;
 			case RECONNECTED:
 				LOG.info("Connection to ZooKeeper was reconnected. Leader election can be restarted.");
