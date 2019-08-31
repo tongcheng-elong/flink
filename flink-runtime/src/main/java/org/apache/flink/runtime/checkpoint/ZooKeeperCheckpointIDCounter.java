@@ -157,10 +157,15 @@ public class ZooKeeperCheckpointIDCounter implements CheckpointIDCounter {
 
 		private void checkConnectionState() {
 
-			if (lastState != ConnectionState.CONNECTED || lastState != ConnectionState.RECONNECTED) {
+			if (lastState == null){
+				return;
+			}
+
+			if (lastState != ConnectionState.CONNECTED && lastState != ConnectionState.RECONNECTED) {
 				throw new IllegalStateException("Connection state: " + lastState);
 			}
 
 		}
 	}
+
 }
