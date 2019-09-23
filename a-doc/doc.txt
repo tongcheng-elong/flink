@@ -12,7 +12,7 @@ cd /work/projects/BigDataArtisans/flink-projects/flink/flink-runtime
 mvn clean compile package install -Dfast -Dmaven.javadoc.skip=true -Dcheckstyle.skip=true -Drat.skip=true -DskipTests -Dskip.npm -Dhadoop.version=2.7.7 -Dscala.version=2.11.12 -Dscala.binary.version=2.11
 
 cd /work/projetcs/BigDataArtisans/flink-projects/flink
-mvn -am -pl flink-dist clean package install -Dfast -Dmaven.javadoc.skip=true -Dcheckstyle.skip=true -Drat.skip=true -DskipTests -Dskip.npm -Dhadoop.version=2.7.7 -Dscala.version=2.11.12 -Dscala.binary.version=2.11
+mvn clean package install -Dfast -T 2C -Dmaven.javadoc.skip=true -Dcheckstyle.skip=true -Drat.skip=true -DskipTests -Dskip.npm -Dhadoop.version=2.7.7 -Dscala.version=2.11.12 -Dscala.binary.version=2.11
 
 cd /work/projects/BigDataArtisans/flink-projects/flink/flink-libraries/flink-ml
 mvn clean compile install assembly:single -DskipTests  -Dfast -Dmaven.javadoc.skip=true -Dcheckstyle.skip=true -Drat.skip=true -DskipTests -Dskip.npm -Dhadoop.version=2.7.7 -Dscala.version=2.11.12 -Dscala.binary.version=2.11
