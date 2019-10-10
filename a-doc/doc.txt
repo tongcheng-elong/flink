@@ -1,0 +1,28 @@
+
+
+
+cd /work/projects/tc_projects/datacenter/rtc-projects/rtcsdk/rtc-data-collect
+mvn clean package -Pproduct
+
+
+export FLINK_PROJECT=/work/projects/BigDataArtisans/flink-projects/flink
+cd ${FLINK_PROJECT}
+mvn clean install -DskipTests=true -Dfast -T 2C -Dmaven.compile.fork=true -Dskip.npm -Dhadoop.version=2.7.7 -Dscala.version=2.11.12 -Dscala.binary.version=2.11
+
+
+export HADOOP_HOME=/work/BigData/install/hadoop/hadoop-2.6.0
+export HADOOP_CONF_DIR=/work/BigData/install/hadoop/hadoop-2.6.0/etc/hadoop
+export YARN_HOME=/work/BigData/install/hadoop/hadoop-2.6.0
+export YARN_HOME_DIR=/work/BigData/install/hadoop/hadoop-2.6.0/etc/hadoop
+
+cd ${FLINK_PROJECT}/flink-dist/target/flink-1.8.2-bin/flink-1.8.2
+\cp /work/BigData/install/flink/config/flink-conf.yaml conf
+\cp ${FLINK_PROJECT}/flink-shaded-hadoop/flink-shaded-hadoop2-uber/target/flink-shaded-hadoop2-uber-2.7.7-1.8.2.jar lib
+\cp /work/projects/tc_projects/datacenter/bigdata_on_docker_config/rtc/config/product/flink-1.6.3-hadoop2.7/lib/aspectjweaver-1.9.1.jar lib
+\cp /work/projects/tc_projects/datacenter/rtc-projects/rtcsdk/rtc-data-collect/rtc-data-collect-sdk/target/rtc-data-collect-sdk-V1.0.jar lib
+
+bin/flink run -m yarn-cluster -d -yD datavd.flink.taskid=rtcflinkjar -yn 2 examples/streaming/SocketWindowWordCount.jar --hostname 10.101.52.39 --port 9999
+
+
+
+
