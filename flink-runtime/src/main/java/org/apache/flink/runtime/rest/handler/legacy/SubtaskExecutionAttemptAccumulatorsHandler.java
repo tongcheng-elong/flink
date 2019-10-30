@@ -90,13 +90,15 @@ public class SubtaskExecutionAttemptAccumulatorsHandler extends AbstractSubtaskA
 
 					for (int x = 0; x < subtask.getCurrentExecutionAttempt().getAttemptNumber(); x++) {
 						AccessExecution attempt = subtask.getPriorExecutionAttempt(x);
-						String json = createAttemptAccumulatorsJson(attempt);
-						String path = SUBTASK_ATTEMPT_ACCUMULATORS_REST_PATH
-							.replace(":jobid", graph.getJobID().toString())
-							.replace(":vertexid", task.getJobVertexId().toString())
-							.replace(":subtasknum", String.valueOf(subtask.getParallelSubtaskIndex()))
-							.replace(":attempt", String.valueOf(attempt.getAttemptNumber()));
-						archive.add(new ArchivedJson(path, json));
+						if (attempt != null) {
+							String json = createAttemptAccumulatorsJson(attempt);
+							String path = SUBTASK_ATTEMPT_ACCUMULATORS_REST_PATH
+								.replace(":jobid", graph.getJobID().toString())
+								.replace(":vertexid", task.getJobVertexId().toString())
+								.replace(":subtasknum", String.valueOf(subtask.getParallelSubtaskIndex()))
+								.replace(":attempt", String.valueOf(attempt.getAttemptNumber()));
+							archive.add(new ArchivedJson(path, json));
+						}
 					}
 				}
 			}
