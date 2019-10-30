@@ -365,20 +365,30 @@ public class CheckpointCoordinator {
 			long timestamp,
 			@Nullable String targetLocation) {
 
-		CheckpointProperties props = CheckpointProperties.forSavepoint();
+		CompletableFuture<CompletedCheckpoint> resultFuture = new CompletableFuture<>();
+		CompletableFuture
+			.runAsync(() -> {
+				CheckpointProperties props = CheckpointProperties.forSavepoint();
 
-		CheckpointTriggerResult triggerResult = triggerCheckpoint(
-			timestamp,
-			props,
-			targetLocation,
-			false);
+				CheckpointTriggerResult triggerResult = triggerCheckpoint(
+					timestamp,
+					props,
+					targetLocation,
+					false);
 
-		if (triggerResult.isSuccess()) {
-			return triggerResult.getPendingCheckpoint().getCompletionFuture();
-		} else {
-			Throwable cause = new CheckpointTriggerException("Failed to trigger savepoint.", triggerResult.getFailureReason());
-			return FutureUtils.completedExceptionally(cause);
-		}
+				if (triggerResult.isSuccess()) {
+					resultFuture.complete(triggerResult.getPendingCheckpoint().getCompletionFuture().join());
+				} else {
+					Throwable cause = new CheckpointTriggerException("Failed to trigger savepoint.", triggerResult.getFailureReason());
+					resultFuture.completeExceptionally(cause);
+				}
+			})
+			.exceptionally(t -> {
+				resultFuture.completeExceptionally(t);
+				return null;
+			});
+
+		return resultFuture;
 	}
 
 	/**
