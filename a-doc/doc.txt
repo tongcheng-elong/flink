@@ -1,0 +1,18 @@
+
+
+cd /work/projects/BigDataArtisans/flink-projects/flink
+mvn clean install -DskipTests=true -Dfast -T 2C -Dmaven.compile.fork=true -Dskip.npm -Dhadoop.version=2.7.5 -Dscala.version=2.11.12 -Dscala.binary.version=2.11
+
+\cp a-doc/flink-shaded-hadoop-2-uber-2.7.5-7.0.jar flink-dist/target/flink-1.9.1-bin/flink-1.9.1/lib
+
+
+
+export HADOOP_HOME=/work/BigData/install/hadoop/hadoop-2.6.0
+export HADOOP_CONF_DIR=/work/BigData/install/hadoop/hadoop-2.6.0/etc/hadoop
+export YARN_HOME=/work/BigData/install/hadoop/hadoop-2.6.0
+export YARN_HOME_DIR=/work/BigData/install/hadoop/hadoop-2.6.0/etc/hadoop
+
+cd /work/projects/BigDataArtisans/flink-projects/flink/flink-dist/target/flink-1.9.1-bin/flink-1.9.1
+\cp /work/BigData/install/flink/config/flink-conf.yaml conf
+
+bin/flink run -m yarn-cluster -yd -yqu root.default -p 2 examples/streaming/SocketWindowWordCount.jar --hostname 10.101.52.12 --port 9999
