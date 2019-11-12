@@ -249,7 +249,7 @@ public class RowTypeInfo extends TupleTypeInfoBase<Row> {
 
 	@Override
 	public int hashCode() {
-		return 31 * super.hashCode();
+		return 31 * (super.hashCode() + Arrays.hashCode(fieldNames));
 	}
 
 	/**
