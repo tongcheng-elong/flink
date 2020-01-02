@@ -18,6 +18,8 @@
 
 package org.apache.flink.table.runtime
 
+import java.sql.Timestamp
+
 import org.apache.calcite.runtime.SqlFunctions
 import org.apache.flink.api.common.functions.MapFunction
 import org.apache.flink.api.common.functions.util.FunctionUtils
@@ -49,8 +51,8 @@ class OutputRowtimeProcessFunction[OUT](
     val timestamp = in.row.getField(rowtimeIdx).asInstanceOf[Long]
     out.asInstanceOf[TimestampedCollector[_]].setAbsoluteTimestamp(timestamp)
 
-    val convertedTimestamp = SqlFunctions.internalToTimestamp(timestamp)
-    in.row.setField(rowtimeIdx, convertedTimestamp)
+//    val convertedTimestamp = SqlFunctions.internalToTimestamp(timestamp)
+    in.row.setField(rowtimeIdx, new Timestamp(timestamp))
 
     out.collect(function.map(in))
   }
