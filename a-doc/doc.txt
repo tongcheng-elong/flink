@@ -2,10 +2,38 @@
 
 
 
+
+cd /opt
+rm -rf flink-dist_2.11-1.6.3.jar
+wget 172.20.89.2:8000/flink-dist_2.11-1.6.3.jar  .
+
+
+
+
+export HADOOP_HOME=/BigData/install/hadoop/hadoop-2.7.7
+export HADOOP_CONF_DIR=/BigData/install/hadoop/hadoop-2.7.7/etc/hadoop
+export YARN_HOME=/BigData/install/hadoop/hadoop-2.7.7
+export YARN_CONF_DIR=/BigData/install/hadoop/hadoop-2.7.7/etc/hadoop
+
+export HADOOP_USER_NAME=flink
+export HADOOP_PROXY_USER=dcadmin
+
+bin/flink run -m yarn-cluster -yd -yqu root.default -p 2 examples/streaming/SocketWindowWordCount.jar --hostname 172.20.71.58 --port 9999
+
+
+
+
+
+
+
 git checkout -b tongcheng-flink-1.6.3 release-flink-1.6.3
 
 cd /work/projects/BigDataArtisans/flink-projects/flink
+
+
 mvn clean install -DskipTests=true -Dfast -T 2C -Dmaven.compile.fork=true -Dskip.npm -Dhadoop.version=2.7.5 -Dscala.version=2.11.12 -Dscala.binary.version=2.11
+
+
 mvn clean install -DskipTests=true -Dfast -T 2C -Dmaven.compile.fork=true -Dskip.npm -Dhadoop.version=2.4.1 -Dscala.version=2.11.12 -Dscala.binary.version=2.11
 
 

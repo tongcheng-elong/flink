@@ -294,6 +294,8 @@ public class YarnResourceManager extends ResourceManager<YarnWorkerNode> impleme
 		//TODO: set priority according to the resource allocated
 		Priority priority = Priority.newInstance(generatePriority(resourceProfile));
 		int mem = resourceProfile.getMemoryInMB() < 0 ? defaultTaskManagerMemoryMB : resourceProfile.getMemoryInMB();
+		mem += flinkConfig.getInteger(TaskManagerOptions.TASKMANAGER_MEMORY_MORE_PHYSICAL);
+
 		int vcore = resourceProfile.getCpuCores() < 1 ? defaultCpus : (int) resourceProfile.getCpuCores();
 		Resource capability = Resource.newInstance(mem, vcore);
 		requestYarnContainer(capability, priority);
@@ -475,9 +477,9 @@ public class YarnResourceManager extends ResourceManager<YarnWorkerNode> impleme
 		final String currDir = env.get(ApplicationConstants.Environment.PWD.key());
 
 		final ContaineredTaskManagerParameters taskManagerParameters =
-				ContaineredTaskManagerParameters.create(flinkConfig, resource.getMemory(), numberOfTaskSlots);
+				ContaineredTaskManagerParameters.create(flinkConfig, resource.getMemory() - flinkConfig.getInteger(TaskManagerOptions.TASKMANAGER_MEMORY_MORE_PHYSICAL), numberOfTaskSlots);
 
-		log.debug("TaskExecutor {} will be started with container size {} MB, JVM heap size {} MB, " +
+		log.info("TaskExecutor {} will be started with container size {} MB, JVM heap size {} MB, " +
 				"JVM direct memory limit {} MB",
 				containerId,
 				taskManagerParameters.taskManagerTotalMemoryMB(),
