@@ -533,8 +533,14 @@ public class YarnResourceManager extends ResourceManager<YarnWorkerNode> impleme
 	@Nonnull
 	@VisibleForTesting
 	AMRMClient.ContainerRequest getContainerRequest() {
+
+		Resource res = getContainerResource();
+		int mem = res.getMemory();
+		mem += flinkConfig.getInteger(TaskManagerOptions.TASKMANAGER_MEMORY_MORE_PHYSICAL);
+		res.setMemory(mem);
+
 		return new AMRMClient.ContainerRequest(
-			getContainerResource(),
+			res,
 			null,
 			null,
 			RM_REQUEST_PRIORITY);
@@ -546,9 +552,9 @@ public class YarnResourceManager extends ResourceManager<YarnWorkerNode> impleme
 		final String currDir = env.get(ApplicationConstants.Environment.PWD.key());
 
 		final ContaineredTaskManagerParameters taskManagerParameters =
-				ContaineredTaskManagerParameters.create(flinkConfig, resource.getMemory(), numberOfTaskSlots);
+				ContaineredTaskManagerParameters.create(flinkConfig, resource.getMemory() - flinkConfig.getInteger(TaskManagerOptions.TASKMANAGER_MEMORY_MORE_PHYSICAL), numberOfTaskSlots);
 
-		log.debug("TaskExecutor {} will be started with container size {} MB, JVM heap size {} MB, " +
+		log.info("TaskExecutor {} will be started with container size {} MB, JVM heap size {} MB, " +
 				"JVM direct memory limit {} MB",
 				containerId,
 				taskManagerParameters.taskManagerTotalMemoryMB(),

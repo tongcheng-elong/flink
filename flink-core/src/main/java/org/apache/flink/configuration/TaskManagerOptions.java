@@ -180,6 +180,13 @@ public class TaskManagerOptions {
 	// ------------------------------------------------------------------------
 
 	/**
+	 * The config parameter defining the number of task slots of a task manager.
+	 */
+	public static final ConfigOption<Integer> TASKMANAGER_MEMORY_MORE_PHYSICAL =
+		key("taskmanager.memory.more.physical")
+			.defaultValue(1024);
+
+	/**
 	 * Size of memory buffers used by the network stack and the memory manager.
 	 */
 	public static final ConfigOption<String> MEMORY_SEGMENT_SIZE =
