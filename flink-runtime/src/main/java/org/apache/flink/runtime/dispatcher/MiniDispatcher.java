@@ -134,7 +134,12 @@ public class MiniDispatcher extends Dispatcher {
 
 	@Override
 	protected void jobReachedGloballyTerminalState(ArchivedExecutionGraph archivedExecutionGraph) {
-		super.jobReachedGloballyTerminalState(archivedExecutionGraph);
+		try {
+			super.jobReachedGloballyTerminalState(archivedExecutionGraph);
+		} catch (Exception e) {
+			log.error("jobReachedGloballyTerminalState", e);
+			throw e;
+		}
 
 		if (executionMode == ClusterEntrypoint.ExecutionMode.DETACHED) {
 			// shut down since we don't have to wait for the execution result retrieval
