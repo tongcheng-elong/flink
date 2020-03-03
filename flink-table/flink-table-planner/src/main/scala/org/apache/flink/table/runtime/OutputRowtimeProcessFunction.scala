@@ -18,8 +18,6 @@
 
 package org.apache.flink.table.runtime
 
-import java.sql.Timestamp
-
 import org.apache.calcite.runtime.SqlFunctions
 import org.apache.flink.api.common.functions.MapFunction
 import org.apache.flink.api.common.functions.util.FunctionUtils
@@ -30,12 +28,12 @@ import org.apache.flink.table.runtime.types.CRow
 import org.apache.flink.util.Collector
 
 /**
-  * Wraps a ProcessFunction and sets a Timestamp field of a CRow as
-  * [[org.apache.flink.streaming.runtime.streamrecord.StreamRecord]] timestamp.
-  */
+ * Wraps a ProcessFunction and sets a Timestamp field of a CRow as
+ * [[org.apache.flink.streaming.runtime.streamrecord.StreamRecord]] timestamp.
+ */
 class OutputRowtimeProcessFunction[OUT](
-    function: MapFunction[CRow, OUT],
-    rowtimeIdx: Int)
+                                         function: MapFunction[CRow, OUT],
+                                         rowtimeIdx: Int)
   extends ProcessFunction[CRow, OUT] {
 
   override def open(parameters: Configuration): Unit = {
@@ -44,15 +42,15 @@ class OutputRowtimeProcessFunction[OUT](
   }
 
   override def processElement(
-      in: CRow,
-      ctx: ProcessFunction[CRow, OUT]#Context,
-      out: Collector[OUT]): Unit = {
+                               in: CRow,
+                               ctx: ProcessFunction[CRow, OUT]#Context,
+                               out: Collector[OUT]): Unit = {
 
     val timestamp = in.row.getField(rowtimeIdx).asInstanceOf[Long]
     out.asInstanceOf[TimestampedCollector[_]].setAbsoluteTimestamp(timestamp)
 
-//    val convertedTimestamp = SqlFunctions.internalToTimestamp(timestamp)
-    in.row.setField(rowtimeIdx, new Timestamp(timestamp))
+    val convertedTimestamp = SqlFunctions.internalToTimestamp(timestamp)
+    in.row.setField(rowtimeIdx, convertedTimestamp)
 
     out.collect(function.map(in))
   }

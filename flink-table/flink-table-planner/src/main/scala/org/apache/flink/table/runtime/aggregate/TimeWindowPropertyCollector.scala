@@ -18,8 +18,6 @@
 
 package org.apache.flink.table.runtime.aggregate
 
-import java.sql.Timestamp
-
 import org.apache.calcite.runtime.SqlFunctions
 import org.apache.flink.table.runtime.types.CRow
 import org.apache.flink.types.Row
@@ -52,14 +50,12 @@ abstract class TimeWindowPropertyCollector[T](
     if (windowStartOffset.isDefined) {
       output.setField(
         lastFieldPos + windowStartOffset.get,
-        new Timestamp(windowStart))
-//        SqlFunctions.internalToTimestamp(windowStart))
+        SqlFunctions.internalToTimestamp(windowStart))
     }
     if (windowEndOffset.isDefined) {
       output.setField(
         lastFieldPos + windowEndOffset.get,
-        new Timestamp(windowEnd))
-//        SqlFunctions.internalToTimestamp(windowEnd))
+        SqlFunctions.internalToTimestamp(windowEnd))
     }
 
     if (windowRowtimeOffset.isDefined) {
