@@ -321,7 +321,11 @@ public class YarnResourceManager extends ResourceManager<YarnWorkerNode> impleme
 
 	@VisibleForTesting
 	Resource getContainerResource() {
-		return resource;
+
+		int mem = resource.getMemory() + flinkConfig.getInteger(TaskManagerOptions.TASKMANAGER_MEMORY_MORE_PHYSICAL);
+		Resource res = Resource.newInstance(mem, resource.getVirtualCores());
+
+		return res;
 	}
 
 	@Override
@@ -537,10 +541,13 @@ public class YarnResourceManager extends ResourceManager<YarnWorkerNode> impleme
 		Resource res = getContainerResource();
 		int mem = res.getMemory();
 		mem += flinkConfig.getInteger(TaskManagerOptions.TASKMANAGER_MEMORY_MORE_PHYSICAL);
-		res.setMemory(mem);
+		// res.setMemory(mem);
+
+
+		Resource resource2 = Resource.newInstance(mem, res.getVirtualCores());
 
 		return new AMRMClient.ContainerRequest(
-			res,
+			resource2,
 			null,
 			null,
 			RM_REQUEST_PRIORITY);
