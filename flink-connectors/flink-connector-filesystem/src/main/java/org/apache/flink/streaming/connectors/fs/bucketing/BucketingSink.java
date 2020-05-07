@@ -18,6 +18,7 @@
 
 package org.apache.flink.streaming.connectors.fs.bucketing;
 
+import org.apache.commons.lang3.time.StopWatch;
 import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.common.ExecutionConfig;
 import org.apache.flink.api.common.state.ListState;
@@ -40,17 +41,14 @@ import org.apache.flink.streaming.connectors.fs.Writer;
 import org.apache.flink.streaming.runtime.tasks.ProcessingTimeCallback;
 import org.apache.flink.streaming.runtime.tasks.ProcessingTimeService;
 import org.apache.flink.util.Preconditions;
-
-import org.apache.commons.lang3.time.StopWatch;
 import org.apache.hadoop.fs.FSDataOutputStream;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.LocalFileSystem;
 import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.fs.viewfs.ViewFileSystem;
 import org.apache.hadoop.hdfs.DistributedFileSystem;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import javax.annotation.Nullable;
 
 import java.io.IOException;
 import java.io.Serializable;
@@ -64,6 +62,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import javax.annotation.Nullable;
 
 /**
  * Sink that emits its input elements to {@link FileSystem} files within
@@ -140,8 +139,8 @@ import java.util.UUID;
  *         can be used to write Hadoop {@code SequenceFiles}.
  *     </li>
  *     <li>
- *       	{@link #closePartFilesByTime(long)} closes buckets that have not been written to for
- *       	{@code inactiveBucketThreshold} or if they are older than {@code batchRolloverInterval}.
+ *        {@link #closePartFilesByTime(long)} closes buckets that have not been written to for
+ *        {@code inactiveBucketThreshold} or if they are older than {@code batchRolloverInterval}.
  *     </li>
  * </ol>
  *
@@ -162,8 +161,8 @@ import java.util.UUID;
  * @param <T> Type of the elements emitted by this sink
  */
 public class BucketingSink<T>
-		extends RichSinkFunction<T>
-		implements InputTypeConfigurable, CheckpointedFunction, CheckpointListener, ProcessingTimeCallback {
+	extends RichSinkFunction<T>
+	implements InputTypeConfigurable, CheckpointedFunction, CheckpointListener, ProcessingTimeCallback {
 
 	private static final long serialVersionUID = 1L;
 
@@ -408,7 +407,7 @@ public class BucketingSink<T>
 		state = new State<>();
 
 		processingTimeService =
-				((StreamingRuntimeContext) getRuntimeContext()).getProcessingTimeService();
+			((StreamingRuntimeContext) getRuntimeContext()).getProcessingTimeService();
 
 		long currentProcessingTime = processingTimeService.getCurrentProcessingTime();
 
@@ -519,7 +518,7 @@ public class BucketingSink<T>
 		synchronized (state.bucketStates) {
 			for (Map.Entry<String, BucketState<T>> entry : state.bucketStates.entrySet()) {
 				if ((entry.getValue().lastWrittenToTime < currentProcessingTime - inactiveBucketThreshold)
-						|| (entry.getValue().creationTime < currentProcessingTime - batchRolloverInterval)) {
+					|| (entry.getValue().creationTime < currentProcessingTime - batchRolloverInterval)) {
 					LOG.debug("BucketingSink {} closing bucket due to inactivity of over {} ms.",
 						getRuntimeContext().getIndexOfThisSubtask(), inactiveBucketThreshold);
 					closeCurrentPartFile(entry.getValue());
@@ -554,8 +553,8 @@ public class BucketingSink<T>
 		int subtaskIndex = getRuntimeContext().getIndexOfThisSubtask();
 		Path partPath = assemblePartPath(bucketPath, subtaskIndex, bucketState.partCounter);
 		while (fs.exists(partPath) ||
-				fs.exists(getPendingPathFor(partPath)) ||
-				fs.exists(getInProgressPathFor(partPath))) {
+			fs.exists(getPendingPathFor(partPath)) ||
+			fs.exists(getInProgressPathFor(partPath))) {
 			bucketState.partCounter++;
 			partPath = assemblePartPath(bucketPath, subtaskIndex, bucketState.partCounter);
 		}
@@ -829,31 +828,19 @@ public class BucketingSink<T>
 				// truncate it or write a ".valid-length" file to specify up to which point it is valid
 				if (refTruncate != null) {
 					LOG.debug("Truncating {} to valid length {}", partPath, validLength);
-					// some-one else might still hold the lease from a previous try, we are
-					// recovering, after all ...
+					// viewfs find real filesystem then wait..
+					if (fs instanceof ViewFileSystem) {
+						ViewFileSystem vfs = (ViewFileSystem) fs;
+						Path resolvePath = vfs.resolvePath(partPath);
+						DistributedFileSystem dfs = (DistributedFileSystem) resolvePath.getFileSystem(fs.getConf());
+						waitLeaseRecovery(dfs, resolvePath);
+					}
 					if (fs instanceof DistributedFileSystem) {
-						DistributedFileSystem dfs = (DistributedFileSystem) fs;
-						LOG.debug("Trying to recover file lease {}", partPath);
-						dfs.recoverLease(partPath);
-						boolean isclosed = dfs.isFileClosed(partPath);
-						StopWatch sw = new StopWatch();
-						sw.start();
-						while (!isclosed) {
-							if (sw.getTime() > asyncTimeout) {
-								break;
-							}
-							try {
-								Thread.sleep(500);
-							} catch (InterruptedException e1) {
-								// ignore it
-							}
-							isclosed = dfs.isFileClosed(partPath);
-						}
+						waitLeaseRecovery((DistributedFileSystem) fs, partPath);
 					}
 					Boolean truncated = (Boolean) refTruncate.invoke(fs, partPath, validLength);
 					if (!truncated) {
 						LOG.debug("Truncate did not immediately complete for {}, waiting...", partPath);
-
 						// we must wait for the asynchronous truncate operation to complete
 						StopWatch sw = new StopWatch();
 						sw.start();
@@ -917,6 +904,27 @@ public class BucketingSink<T>
 					throw new RuntimeException("Error while renaming pending file " + pendingPath + " to final path " + finalPath, e);
 				}
 			}
+		}
+	}
+
+	private void waitLeaseRecovery(DistributedFileSystem dfs, Path partPath) throws IOException {
+		// some-one else might still hold the lease from a previous try, we are
+		// recovering, after all ...
+		LOG.debug("Trying to recover file lease {}", partPath);
+		boolean isRecoverLease = dfs.recoverLease(partPath);
+		boolean isclosed = dfs.isFileClosed(partPath);
+		StopWatch sw = new StopWatch();
+		sw.start();
+		while (!isclosed) {
+			if (sw.getTime() > asyncTimeout) {
+				break;
+			}
+			try {
+				Thread.sleep(500);
+			} catch (InterruptedException e1) {
+				// ignore it
+			}
+			isclosed = dfs.isFileClosed(partPath);
 		}
 	}
 
@@ -1214,23 +1222,22 @@ public class BucketingSink<T>
 	// ------------------------------------------------------------------------
 
 	public static FileSystem createHadoopFileSystem(
-			Path path,
-			@Nullable Configuration extraUserConf) throws IOException {
+		Path path,
+		@Nullable Configuration extraUserConf) throws IOException {
 
 		// try to get the Hadoop File System via the Flink File Systems
 		// that way we get the proper configuration
 
 		final org.apache.flink.core.fs.FileSystem flinkFs =
-				org.apache.flink.core.fs.FileSystem.getUnguardedFileSystem(path.toUri());
+			org.apache.flink.core.fs.FileSystem.getUnguardedFileSystem(path.toUri());
 		final FileSystem hadoopFs = (flinkFs instanceof HadoopFileSystem) ?
-				((HadoopFileSystem) flinkFs).getHadoopFileSystem() : null;
+			((HadoopFileSystem) flinkFs).getHadoopFileSystem() : null;
 
 		// fast path: if the Flink file system wraps Hadoop anyways and we need no extra config,
 		// then we use it directly
 		if (extraUserConf == null && hadoopFs != null) {
 			return hadoopFs;
-		}
-		else {
+		} else {
 			// we need to re-instantiate the Hadoop file system, because we either have
 			// a special config, or the Path gave us a Flink FS that is not backed by
 			// Hadoop (like file://)
@@ -1239,8 +1246,7 @@ public class BucketingSink<T>
 			if (hadoopFs != null) {
 				// have a Hadoop FS but need to apply extra config
 				hadoopConf = hadoopFs.getConf();
-			}
-			else {
+			} else {
 				// the Path gave us a Flink FS that is not backed by Hadoop (like file://)
 				// we need to get access to the Hadoop file system first
 
@@ -1250,11 +1256,11 @@ public class BucketingSink<T>
 
 				URI genericHdfsUri = URI.create("hdfs://localhost:12345/");
 				org.apache.flink.core.fs.FileSystem accessor =
-						org.apache.flink.core.fs.FileSystem.getUnguardedFileSystem(genericHdfsUri);
+					org.apache.flink.core.fs.FileSystem.getUnguardedFileSystem(genericHdfsUri);
 
 				if (!(accessor instanceof HadoopFileSystem)) {
 					throw new IOException(
-							"Cannot instantiate a Hadoop file system to access the Hadoop configuration. " +
+						"Cannot instantiate a Hadoop file system to access the Hadoop configuration. " +
 							"FS for hdfs:// is " + accessor.getClass().getName());
 				}
 
@@ -1266,8 +1272,7 @@ public class BucketingSink<T>
 			final org.apache.hadoop.conf.Configuration finalConf;
 			if (extraUserConf == null) {
 				finalConf = hadoopConf;
-			}
-			else {
+			} else {
 				finalConf = new org.apache.hadoop.conf.Configuration(hadoopConf);
 
 				for (String key : extraUserConf.keySet()) {
@@ -1284,8 +1289,7 @@ public class BucketingSink<T>
 
 			if (scheme == null && authority == null) {
 				fsUri = FileSystem.getDefaultUri(finalConf);
-			}
-			else if (scheme != null && authority == null) {
+			} else if (scheme != null && authority == null) {
 				URI defaultUri = FileSystem.getDefaultUri(finalConf);
 				if (scheme.equals(defaultUri.getScheme()) && defaultUri.getAuthority() != null) {
 					fsUri = defaultUri;
@@ -1296,8 +1300,7 @@ public class BucketingSink<T>
 			final FileSystem fs;
 			try {
 				fs = fsClass.newInstance();
-			}
-			catch (Exception e) {
+			} catch (Exception e) {
 				throw new IOException("Cannot instantiate the Hadoop file system", e);
 			}
 
