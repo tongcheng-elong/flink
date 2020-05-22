@@ -845,12 +845,24 @@ public abstract class Dispatcher extends FencedRpcEndpoint<DispatcherId> impleme
 				confirmationFuture.whenComplete(
 					(Void ignored, Throwable throwable) -> {
 						if (throwable != null) {
-							onFatalError(ExceptionUtils.stripCompletionException(throwable));
+
+							String stackstrace = ExceptionUtils.stringifyException(throwable);
+							// java.io.FileNotFoundException: Cannot find checkpoint or savepoint file/directory 'hdfs:///flink/dev/flink-checkpoints/fefee' on file system 'hdfs'
+							if (stackstrace.contains("FileNotFoundException")) {
+								log.error("java.io.FileNotFoundException: Cannot find checkpoint or savepoint file", throwable);
+								startFailed();
+							} else {
+								onFatalError(ExceptionUtils.stripCompletionException(throwable));
+							}
 						}
 					});
 
 				recoveryOperation = confirmationFuture;
 			});
+	}
+
+	protected void startFailed() {
+
 	}
 
 	private CompletableFuture<Boolean> tryAcceptLeadershipAndRunJobs(UUID newLeaderSessionID, Collection<JobGraph> recoveredJobs) {

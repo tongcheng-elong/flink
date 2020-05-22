@@ -154,4 +154,9 @@ public class MiniDispatcher extends Dispatcher {
 		// shut down since we have done our job
 		jobTerminationFuture.complete(ApplicationStatus.UNKNOWN);
 	}
+
+	@Override
+	protected void startFailed() {
+		jobTerminationFuture.complete(ApplicationStatus.FAILED);
+	}
 }
