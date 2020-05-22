@@ -829,16 +829,10 @@ public class BucketingSink<T>
 				if (refTruncate != null) {
 					LOG.debug("Truncating {} to valid length {}", partPath, validLength);
 					// viewfs find real filesystem then wait..
-					if (fs instanceof ViewFileSystem) {
-						ViewFileSystem vfs = (ViewFileSystem) fs;
-						Path resolvePath = vfs.resolvePath(partPath);
-						DistributedFileSystem dfs = (DistributedFileSystem) resolvePath.getFileSystem(fs.getConf());
-						waitLeaseRecovery(dfs, resolvePath);
-					}
-					if (fs instanceof DistributedFileSystem) {
-						waitLeaseRecovery((DistributedFileSystem) fs, partPath);
-					}
-					Boolean truncated = (Boolean) refTruncate.invoke(fs, partPath, validLength);
+					final Path resolvedPath = fs.resolvePath(partPath);
+                    final FileSystem resolvedFileSystem = resolvedPath.getFileSystem(fs.getConf());
+					waitLeaseRecovery(resolvedFileSystem, resolvedPath);
+					Boolean truncated = (Boolean) refTruncate.invoke(resolvedFileSystem, resolvedPath, validLength);
 					if (!truncated) {
 						LOG.debug("Truncate did not immediately complete for {}, waiting...", partPath);
 						// we must wait for the asynchronous truncate operation to complete
@@ -907,11 +901,13 @@ public class BucketingSink<T>
 		}
 	}
 
-	private void waitLeaseRecovery(DistributedFileSystem dfs, Path partPath) throws IOException {
+	private void waitLeaseRecovery(FileSystem fs, Path partPath) throws IOException {
 		// some-one else might still hold the lease from a previous try, we are
 		// recovering, after all ...
 		LOG.debug("Trying to recover file lease {}", partPath);
-		boolean isRecoverLease = dfs.recoverLease(partPath);
+		Preconditions.checkArgument(fs instanceof DistributedFileSystem);
+        final DistributedFileSystem dfs=(DistributedFileSystem)fs;
+		dfs.recoverLease(partPath);
 		boolean isclosed = dfs.isFileClosed(partPath);
 		StopWatch sw = new StopWatch();
 		sw.start();

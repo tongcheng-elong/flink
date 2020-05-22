@@ -26,6 +26,7 @@ import org.apache.flink.core.fs.RecoverableWriter.ResumeRecoverable;
 import org.apache.flink.util.ExceptionUtils;
 import org.apache.flink.util.FlinkRuntimeException;
 import org.apache.flink.util.IOUtils;
+import org.apache.flink.util.Preconditions;
 import org.apache.hadoop.fs.FSDataOutputStream;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
@@ -50,7 +51,6 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
 class HadoopRecoverableFsDataOutputStream extends RecoverableFsDataOutputStream {
 
 	private static final long LEASE_TIMEOUT = 100_000L;
-	private static final long VIEWFS_LEASE_TIMEOUT = 60_000L;
 
 	private static Method truncateHandle;
 
@@ -85,21 +85,21 @@ class HadoopRecoverableFsDataOutputStream extends RecoverableFsDataOutputStream 
 		this.targetFile = checkNotNull(recoverable.targetFile());
 		this.tempFile = checkNotNull(recoverable.tempFile());
 
-		waitUntilLeaseIsRevoked(fs, tempFile);
-
+		final Path resolvedPath=fs.resolvePath(tempFile);
+		final FileSystem resolvedFSystem=resolvedPath.getFileSystem(fs.getConf());
+		waitUntilLeaseIsRevoked(resolvedFSystem, resolvedPath);
 		// truncate back and append
 		boolean truncated;
 		try {
-			truncated = truncate(fs, tempFile, recoverable.offset());
+			truncated = truncate(resolvedFSystem, resolvedPath, recoverable.offset());
 		} catch (Exception e) {
 			throw new IOException("Missing data in tmp file: " + tempFile, e);
 		}
 
 		if (!truncated) {
 			// Truncate did not complete immediately, we must wait for the operation to complete and release the lease
-			waitUntilLeaseIsRevoked(fs, tempFile);
+			waitUntilLeaseIsRevoked(resolvedFSystem, resolvedPath);
 		}
-
 		out = fs.append(tempFile);
 
 		// sanity check
@@ -291,27 +291,6 @@ class HadoopRecoverableFsDataOutputStream extends RecoverableFsDataOutputStream 
 		}
 	}
 
-
-	/**
-	 * support viewfs use resolvePath to find real path and fs then recoverLease
-	 * @param fs
-	 * @param path
-	 * @return
-	 * @throws IOException
-	 */
-	private boolean waitUntilLeaseIsRevoked(final FileSystem fs, final Path path) throws IOException {
-		if (fs instanceof ViewFileSystem) {
-			ViewFileSystem vfs = (ViewFileSystem) fs;
-			Path resolvePath = vfs.resolvePath(path);
-			DistributedFileSystem dfs = (DistributedFileSystem) resolvePath.getFileSystem(fs.getConf());
-			return waitUntilLeaseIsRevoked(dfs, resolvePath);
-		}
-		if (fs instanceof DistributedFileSystem) {
-			return waitUntilLeaseIsRevoked((DistributedFileSystem) fs, path);
-		}
-		return true;
-	}
-
 	/**
 	 * Called when resuming execution after a failure and waits until the lease
 	 * of the file we are resuming is free.
@@ -324,7 +303,9 @@ class HadoopRecoverableFsDataOutputStream extends RecoverableFsDataOutputStream 
 	 * @return
 	 * @throws IOException
 	 */
-	private boolean waitUntilLeaseIsRevoked(final DistributedFileSystem dfs, final Path path) throws IOException {
+	private boolean waitUntilLeaseIsRevoked(final FileSystem fs, final Path path) throws IOException {
+		Preconditions.checkArgument(fs instanceof DistributedFileSystem);
+		final DistributedFileSystem dfs=(DistributedFileSystem)fs;
 		dfs.recoverLease(path);
 		final Deadline deadline = Deadline.now().plus(Duration.ofMillis(LEASE_TIMEOUT));
 		boolean isClosed = dfs.isFileClosed(path);
