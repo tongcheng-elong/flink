@@ -360,6 +360,8 @@ public class YarnResourceManager extends ResourceManager<YarnWorkerNode> impleme
 					container.getId(),
 					numPendingContainerRequests);
 
+				resourceManagerClient.removeContainerRequest(new AMRMClient.ContainerRequest(container.getResource(),null,null,container.getPriority()));
+
 				if (numPendingContainerRequests > 0) {
 					numPendingContainerRequests--;
 
