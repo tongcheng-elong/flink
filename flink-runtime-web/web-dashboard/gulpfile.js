@@ -39,6 +39,7 @@ var filter = require('gulp-filter');
 var mainBowerFiles = require('main-bower-files');
 var less = require('gulp-less');
 var path = require('path');
+var debug = require('gulp-debug');
 
 var environment = 'production';
 var paths = {
@@ -81,7 +82,7 @@ gulp.task('pre-process-vendor-styles', function () {
 });
 
 gulp.task('vendor-styles', [ 'pre-process-vendor-styles' ], function() {
-  stream = gulp.src(mainBowerFiles().concat([paths.tmp + 'css/*.css']).concat([paths.vendor + 'qtip2/jquery.qtip.css']))
+  stream = gulp.src(mainBowerFiles().concat(paths.src + 'styles/xterm.css').concat([paths.tmp + 'css/*.css']).concat([paths.vendor + 'qtip2/jquery.qtip.css']))
     .pipe(filter(['*.css', '!bootstrap.css']))
     .pipe(sourcemaps.init())
     .pipe(concat("vendor.css"))
@@ -93,6 +94,14 @@ gulp.task('vendor-styles', [ 'pre-process-vendor-styles' ], function() {
 
   stream.pipe(gulp.dest(paths.dest + 'css/'))
 });
+
+gulp.task('test',function (){
+  gulp.src(mainBowerFiles({
+    env: 'development'
+  }).concat([paths.vendorLocal + '*.js']))
+      .pipe(filter('*.js'))
+      .pipe(debug({title: 'unicorn:'}))
+})
 
 gulp.task('vendor-scripts', function() {
   stream = gulp.src(mainBowerFiles({
@@ -173,7 +182,7 @@ gulp.task('styles', function () {
   stream = gulp.src(paths.src + 'styles/index.styl')
     .pipe(plumber())
     .pipe(stylus({ use: [nib()] }))
-  
+
   if (environment == 'production') {
     stream.pipe(minify());
   }

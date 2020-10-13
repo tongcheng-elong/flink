@@ -30,7 +30,7 @@ angular.module('flinkApp', ['ui.router', 'angularMoment', 'dndLists'])
 
 .value 'flinkConfig', {
   jobServer: ''
-#  jobServer: 'http://localhost:8081/'
+  jobServer: 'http://localhost:8081/'
   "refresh-interval": 10000
 }
 
@@ -245,6 +245,13 @@ angular.module('flinkApp', ['ui.router', 'angularMoment', 'dndLists'])
       details:
         templateUrl: "partials/taskmanager/taskmanager.log.html"
         controller: 'SingleTaskManagerLogsController'
+
+  .state "single-manager.arthas",
+    url: "/arthas"
+    views:
+      details:
+        templateUrl: "partials/taskmanager/taskmanager.arthas.html"
+        controller: 'SingleTaskManagerArthasController'
 
   .state "jobmanager",
       url: "/jobmanager"

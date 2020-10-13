@@ -62,3 +62,27 @@ angular.module('flinkApp')
   $scope.reloadData = () ->
     SingleTaskManagerService.loadStdout($stateParams.taskmanagerid).then (data) ->
       $scope.stdout = data
+
+.controller 'SingleTaskManagerArthasController',($scope,$stateParams,SingleTaskManagerService,$interval,flinkConfig)->
+  $scope.testaa="hello"
+  $scope.taskmanagerid=$stateParams.taskmanagerid
+  xterm={}
+  ws={}
+  $scope.init=()->
+    path='ws://127.0.0.1:3658/ws'
+    ws= new WebSocket path
+    console.log(ws)
+    ws.onerror=()->
+      ws.close()
+      ws=null
+    ws.onopen=()->
+      xterm=new Terminal {cols:170,rows:50,screenReaderMode:true,rendererType:"canvas",convertEol:true}
+      ws.onmessage=(event)->
+        if event.type=='message'
+          xterm.write(event.data)
+      xterm.open(document.getElementById('terminal'))
+      xterm.on 'data', (data)->
+        ws.send(JSON.stringify({action: 'read', data: data}))
+      ws.send(JSON.stringify({action: 'resize', cols: 170, rows: 50}))
+  $scope.init()
+
