@@ -68,21 +68,39 @@ angular.module('flinkApp')
   $scope.taskmanagerid=$stateParams.taskmanagerid
   xterm={}
   ws={}
+  serverWs={}
+  $scope.testId='container_e10_1602901254050_3362_01_000007'
   $scope.init=()->
-    path='ws://127.0.0.1:3658/ws'
-    ws= new WebSocket path
-    console.log(ws)
-    ws.onerror=()->
-      ws.close()
-      ws=null
-    ws.onopen=()->
-      xterm=new Terminal {cols:170,rows:50,screenReaderMode:true,rendererType:"canvas",convertEol:true}
-      ws.onmessage=(event)->
-        if event.type=='message'
-          xterm.write(event.data)
-      xterm.open(document.getElementById('terminal'))
-      xterm.on 'data', (data)->
-        ws.send(JSON.stringify({action: 'read', data: data}))
-      ws.send(JSON.stringify({action: 'resize', cols: 170, rows: 50}))
+    serverWs= new WebSocket 'ws://bds.17usoft.com/rtcmonitor/socketWeb/'+$scope.taskmanagerid
+#    serverWs= new WebSocket 'ws://bds.17usoft.com/rtcmonitor/wsWeb?containerId='+$scope.taskmanagerid
+
+    serverWs.onerror=()->
+       serverWs.close()
+       serverWs=null
+
+    serverWs.onopen=()->
+       serverWs.onmessage=(event)->
+         if event.data.startsWith 'alreadyAttach:'
+            $scope.connectTurnl(event.data.split(':')[1])
+         else if event.data.startsWith 'newAttach'
+#            serverWs.send("attach:"+$scope.taskmanagerid)
+            serverWs.send("attach:"+$scope.taskmanagerid)
+
+    $scope.connectTurnl=(clientId)->
+        path='ws://bds.17usoft.com/rtcmonitor/ws?method=connectArthas&id='+clientId
+        ws= new WebSocket path
+        console.log(ws)
+        ws.onerror=()->
+           ws.close()
+           ws=null
+        ws.onopen=()->
+           xterm=new Terminal {cols:170,rows:50,screenReaderMode:true,rendererType:"canvas",convertEol:true}
+           ws.onmessage=(event)->
+             if event.type=='message'
+               xterm.write(event.data)
+           xterm.open(document.getElementById('terminal'))
+           xterm.on 'data', (data)->
+             ws.send(JSON.stringify({action: 'read', data: data}))
+           ws.send(JSON.stringify({action: 'resize', cols: 170, rows: 50}))
   $scope.init()
 
