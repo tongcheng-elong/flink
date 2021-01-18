@@ -16,13 +16,11 @@
 # limitations under the License.
 ################################################################################
 
-import unittest
-
-from pyflink.testing.test_case_utils import PythonAPICompletenessTestCase
+from pyflink.testing.test_case_utils import PythonAPICompletenessTestCase, PyFlinkTestCase
 from pyflink.table import TableEnvironment
 
 
-class EnvironmentAPICompletenessTests(PythonAPICompletenessTestCase, unittest.TestCase):
+class EnvironmentAPICompletenessTests(PythonAPICompletenessTestCase, PyFlinkTestCase):
     """
     Tests whether the Python :class:`TableEnvironment` is consistent with
     Java `org.apache.flink.table.api.TableEnvironment`.
@@ -37,12 +35,31 @@ class EnvironmentAPICompletenessTests(PythonAPICompletenessTestCase, unittest.Te
 
     @classmethod
     def excluded_methods(cls):
-        # registerFunction and listUserDefinedFunctions should be supported when UDFs supported.
-        # registerCatalog, getCatalog and listTables should be supported when catalog supported in
-        # python. getCompletionHints has been deprecated. It will be removed in the next release.
+        # getCompletionHints has been deprecated. It will be removed in the next release.
         # TODO add TableEnvironment#create method with EnvironmentSettings as a parameter
-        return {'registerCatalog', 'getCatalog', 'registerFunction', 'listTables',
-                'getCompletionHints', 'create'}
+        return {
+            'getCompletionHints',
+            'fromValues',
+            'create',
+            'loadModule',
+            'unloadModule',
+            'createTemporarySystemFunction',
+            'dropTemporarySystemFunction',
+            'createFunction',
+            'dropFunction',
+            'createTemporaryFunction',
+            'dropTemporaryFunction'}
+
+    @classmethod
+    def java_method_name(cls, python_method_name):
+        """
+        Due to 'from' is python keyword, so we use 'from_path'
+        in Python API corresponding 'from' in Java API.
+
+        :param python_method_name:
+        :return:
+        """
+        return {'from_path': 'from'}.get(python_method_name, python_method_name)
 
 
 if __name__ == '__main__':

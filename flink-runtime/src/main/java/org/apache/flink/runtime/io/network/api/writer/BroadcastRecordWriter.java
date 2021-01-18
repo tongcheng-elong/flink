@@ -25,23 +25,30 @@ import java.io.IOException;
 /**
  * A special record-oriented runtime result writer only for broadcast mode.
  *
- * <p>The BroadcastRecordWriter extends the {@link RecordWriter} and handles {@link #emit(IOReadableWritable)}
- * operation via {@link #broadcastEmit(IOReadableWritable)} directly in a more efficient way.
+ * <p>The BroadcastRecordWriter extends the {@link RecordWriter} and emits records to all channels
+ * for regular {@link #emit(IOReadableWritable)}.
  *
  * @param <T> the type of the record that can be emitted with this record writer
  */
-public class BroadcastRecordWriter<T extends IOReadableWritable> extends RecordWriter<T> {
+public final class BroadcastRecordWriter<T extends IOReadableWritable> extends RecordWriter<T> {
 
-	BroadcastRecordWriter(
-			ResultPartitionWriter writer,
-			ChannelSelector<T> channelSelector,
-			long timeout,
-			String taskName) {
-		super(writer, channelSelector, timeout, taskName);
-	}
+    BroadcastRecordWriter(ResultPartitionWriter writer, long timeout, String taskName) {
+        super(writer, timeout, taskName);
+    }
 
-	@Override
-	public void emit(T record) throws IOException, InterruptedException {
-		broadcastEmit(record);
-	}
+    @Override
+    public void emit(T record) throws IOException {
+        broadcastEmit(record);
+    }
+
+    @Override
+    public void broadcastEmit(T record) throws IOException {
+        checkErroneous();
+
+        targetPartition.broadcastRecord(serializeRecord(serializer, record));
+
+        if (flushAlways) {
+            flushAll();
+        }
+    }
 }

@@ -25,11 +25,11 @@ class StreamTableJoinTests(PyFlinkStreamTableTestCase):
         t_env = self.t_env
         t1 = t_env.from_elements([(1, "Hi", "Hello")], ['a', 'b', 'c'])
         t2 = t_env.from_elements([(2, "Flink")], ['d', 'e'])
-        result = t1.join(t2, "a = d")
+        result = t1.join(t2, t1.a == t2.d)
 
         query_operation = result._j_table.getQueryOperation()
         self.assertEqual('INNER', query_operation.getJoinType().toString())
-        self.assertEqual('`default_catalog`.`default_database`.`equals`(a, d)',
+        self.assertEqual('equals(a, d)',
                          query_operation.getCondition().toString())
         self.assertFalse(query_operation.isCorrelated())
 
@@ -37,7 +37,7 @@ class StreamTableJoinTests(PyFlinkStreamTableTestCase):
         t_env = self.t_env
         t1 = t_env.from_elements([(1, "Hi", "Hello")], ['a', 'b', 'c'])
         t2 = t_env.from_elements([(2, "Flink")], ['d', 'e'])
-        result = t1.join(t2).where("a = d")
+        result = t1.join(t2).where(t1.a == t2.d)
 
         query_operation = result._j_table.getQueryOperation().getChildren().get(0)
         self.assertEqual('INNER', query_operation.getJoinType().toString())
@@ -48,11 +48,11 @@ class StreamTableJoinTests(PyFlinkStreamTableTestCase):
         t_env = self.t_env
         t1 = t_env.from_elements([(1, "Hi", "Hello")], ['a', 'b', 'c'])
         t2 = t_env.from_elements([(2, "Flink")], ['d', 'e'])
-        result = t1.left_outer_join(t2, "a = d")
+        result = t1.left_outer_join(t2, t1.a == t2.d)
 
         query_operation = result._j_table.getQueryOperation()
         self.assertEqual('LEFT_OUTER', query_operation.getJoinType().toString())
-        self.assertEqual('`default_catalog`.`default_database`.`equals`(a, d)',
+        self.assertEqual('equals(a, d)',
                          query_operation.getCondition().toString())
         self.assertFalse(query_operation.isCorrelated())
 
@@ -60,7 +60,7 @@ class StreamTableJoinTests(PyFlinkStreamTableTestCase):
         t_env = self.t_env
         t1 = t_env.from_elements([(1, "Hi", "Hello")], ['a', 'b', 'c'])
         t2 = t_env.from_elements([(2, "Flink")], ['d', 'e'])
-        result = t1.left_outer_join(t2).where("a = d")
+        result = t1.left_outer_join(t2).where(t1.a == t2.d)
 
         query_operation = result._j_table.getQueryOperation().getChildren().get(0)
         self.assertEqual('LEFT_OUTER', query_operation.getJoinType().toString())
@@ -71,11 +71,11 @@ class StreamTableJoinTests(PyFlinkStreamTableTestCase):
         t_env = self.t_env
         t1 = t_env.from_elements([(1, "Hi", "Hello")], ['a', 'b', 'c'])
         t2 = t_env.from_elements([(2, "Flink")], ['d', 'e'])
-        result = t1.right_outer_join(t2, "a = d")
+        result = t1.right_outer_join(t2, t1.a == t2.d)
 
         query_operation = result._j_table.getQueryOperation()
         self.assertEqual('RIGHT_OUTER', query_operation.getJoinType().toString())
-        self.assertEqual('`default_catalog`.`default_database`.`equals`(a, d)',
+        self.assertEqual('equals(a, d)',
                          query_operation.getCondition().toString())
         self.assertFalse(query_operation.isCorrelated())
 
@@ -84,10 +84,10 @@ class StreamTableJoinTests(PyFlinkStreamTableTestCase):
         t1 = t_env.from_elements([(1, "Hi", "Hello")], ['a', 'b', 'c'])
         t2 = t_env.from_elements([(2, "Flink")], ['d', 'e'])
 
-        result = t1.full_outer_join(t2, "a = d")
+        result = t1.full_outer_join(t2, t1.a == t2.d)
         query_operation = result._j_table.getQueryOperation()
         self.assertEqual('FULL_OUTER', query_operation.getJoinType().toString())
-        self.assertEqual('`default_catalog`.`default_database`.`equals`(a, d)',
+        self.assertEqual('equals(a, d)',
                          query_operation.getCondition().toString())
         self.assertFalse(query_operation.isCorrelated())
 

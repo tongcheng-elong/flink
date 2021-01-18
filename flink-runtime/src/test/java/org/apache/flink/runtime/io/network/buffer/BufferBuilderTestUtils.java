@@ -27,93 +27,104 @@ import java.nio.ByteOrder;
 import static org.apache.flink.util.Preconditions.checkArgument;
 import static org.junit.Assert.assertEquals;
 
-/**
- * Utility class for create not-pooled {@link BufferBuilder}.
- */
+/** Utility class for create not-pooled {@link BufferBuilder}. */
 public class BufferBuilderTestUtils {
-	public static final int BUFFER_SIZE = 32 * 1024;
+    public static final int BUFFER_SIZE = 32 * 1024;
 
-	public static BufferBuilder createBufferBuilder() {
-		return createBufferBuilder(BUFFER_SIZE);
-	}
+    public static BufferBuilder createBufferBuilder() {
+        return createBufferBuilder(BUFFER_SIZE);
+    }
 
-	public static BufferBuilder createBufferBuilder(int size) {
-		return createFilledBufferBuilder(size, 0);
-	}
+    public static BufferBuilder createBufferBuilder(int size) {
+        return createFilledBufferBuilder(size, 0);
+    }
 
-	public static BufferBuilder createFilledBufferBuilder(int dataSize) {
-		return createFilledBufferBuilder(BUFFER_SIZE, dataSize);
-	}
+    public static BufferBuilder createFilledBufferBuilder(int size, int dataSize) {
+        checkArgument(size >= dataSize);
+        BufferBuilder bufferBuilder =
+                new BufferBuilder(
+                        MemorySegmentFactory.allocateUnpooledSegment(size),
+                        FreeingBufferRecycler.INSTANCE);
+        return fillBufferBuilder(bufferBuilder, dataSize);
+    }
 
-	public static BufferBuilder createFilledBufferBuilder(int size, int dataSize) {
-		checkArgument(size >= dataSize);
-		BufferBuilder bufferBuilder = new BufferBuilder(
-			MemorySegmentFactory.allocateUnpooledSegment(size),
-			FreeingBufferRecycler.INSTANCE);
-		return fillBufferBuilder(bufferBuilder, dataSize);
-	}
+    public static BufferBuilder fillBufferBuilder(BufferBuilder bufferBuilder, int dataSize) {
+        bufferBuilder.appendAndCommit(ByteBuffer.allocate(dataSize));
+        return bufferBuilder;
+    }
 
-	public static BufferBuilder fillBufferBuilder(BufferBuilder bufferBuilder, int dataSize) {
-		bufferBuilder.appendAndCommit(ByteBuffer.allocate(dataSize));
-		return bufferBuilder;
-	}
+    public static Buffer buildSingleBuffer(BufferBuilder bufferBuilder) {
+        try (BufferConsumer bufferConsumer = bufferBuilder.createBufferConsumer()) {
+            return bufferConsumer.build();
+        }
+    }
 
-	public static Buffer buildSingleBuffer(BufferBuilder bufferBuilder) {
-		try (BufferConsumer bufferConsumer = bufferBuilder.createBufferConsumer()) {
-			return bufferConsumer.build();
-		}
-	}
+    public static Buffer buildSingleBuffer(BufferConsumer bufferConsumer) {
+        Buffer buffer = bufferConsumer.build();
+        bufferConsumer.close();
+        return buffer;
+    }
 
-	public static Buffer buildSingleBuffer(BufferConsumer bufferConsumer) {
-		Buffer buffer = bufferConsumer.build();
-		bufferConsumer.close();
-		return buffer;
-	}
+    public static BufferConsumer createFilledFinishedBufferConsumer(int dataSize) {
+        return createFilledBufferConsumer(dataSize, dataSize, true);
+    }
 
-	public static BufferConsumer createFilledBufferConsumer(int size, int dataSize) {
-		BufferBuilder bufferBuilder = createFilledBufferBuilder(size, dataSize);
-		bufferBuilder.finish();
-		return bufferBuilder.createBufferConsumer();
-	}
+    public static BufferConsumer createFilledUnfinishedBufferConsumer(int dataSize) {
+        return createFilledBufferConsumer(dataSize, dataSize, false);
+    }
 
-	public static BufferConsumer createFilledBufferConsumer(int dataSize) {
-		return createFilledBufferConsumer(BUFFER_SIZE, dataSize);
-	}
+    public static BufferConsumer createFilledBufferConsumer(
+            int size, int dataSize, boolean isFinished) {
+        checkArgument(size >= dataSize);
 
-	public static BufferConsumer createEventBufferConsumer(int size) {
-		return new BufferConsumer(
-			MemorySegmentFactory.allocateUnpooledSegment(size),
-			FreeingBufferRecycler.INSTANCE,
-			false);
-	}
+        BufferBuilder bufferBuilder = createBufferBuilder(size);
+        BufferConsumer bufferConsumer = bufferBuilder.createBufferConsumer();
+        fillBufferBuilder(bufferBuilder, dataSize);
 
-	public static Buffer buildBufferWithAscendingInts(int bufferSize, int numInts, int nextValue) {
-		final MemorySegment seg = MemorySegmentFactory.allocateUnpooledSegment(bufferSize);
-		for (int i = 0; i < numInts; i++) {
-			seg.putIntLittleEndian(4 * i, nextValue++);
-		}
+        if (isFinished) {
+            bufferBuilder.finish();
+        }
 
-		return new NetworkBuffer(seg, MemorySegment::free, true, 4 * numInts);
-	}
+        return bufferConsumer;
+    }
 
-	public static void validateBufferWithAscendingInts(Buffer buffer, int numInts, int nextValue) {
-		final ByteBuffer bb = buffer.getNioBufferReadable().order(ByteOrder.LITTLE_ENDIAN);
+    public static BufferConsumer createEventBufferConsumer(int size, Buffer.DataType dataType) {
+        return new BufferConsumer(
+                MemorySegmentFactory.allocateUnpooledSegment(size),
+                FreeingBufferRecycler.INSTANCE,
+                dataType);
+    }
 
-		for (int i = 0; i < numInts; i++) {
-			assertEquals(nextValue++, bb.getInt());
-		}
-	}
+    public static Buffer buildBufferWithAscendingInts(int bufferSize, int numInts, int nextValue) {
+        final MemorySegment seg = MemorySegmentFactory.allocateUnpooledSegment(bufferSize);
+        for (int i = 0; i < numInts; i++) {
+            seg.putIntLittleEndian(4 * i, nextValue++);
+        }
 
-	public static Buffer buildSomeBuffer() {
-		return buildSomeBuffer(1024);
-	}
+        return new NetworkBuffer(
+                seg, MemorySegment::free, Buffer.DataType.DATA_BUFFER, 4 * numInts);
+    }
 
-	public static Buffer buildSomeBuffer(int size) {
-		final MemorySegment seg = MemorySegmentFactory.allocateUnpooledSegment(size);
-		return new NetworkBuffer(seg, MemorySegment::free, true, size);
-	}
+    public static void validateBufferWithAscendingInts(Buffer buffer, int numInts, int nextValue) {
+        final ByteBuffer bb = buffer.getNioBufferReadable().order(ByteOrder.LITTLE_ENDIAN);
 
-	public static BufferBuilder createEmptyBufferBuilder(int bufferSize) {
-		return new BufferBuilder(MemorySegmentFactory.allocateUnpooledSegment(bufferSize), FreeingBufferRecycler.INSTANCE);
-	}
+        for (int i = 0; i < numInts; i++) {
+            assertEquals(nextValue++, bb.getInt());
+        }
+    }
+
+    public static Buffer buildSomeBuffer() {
+        return buildSomeBuffer(1024);
+    }
+
+    public static Buffer buildSomeBuffer(int size) {
+        final MemorySegment seg = MemorySegmentFactory.allocateUnpooledSegment(size);
+        return new NetworkBuffer(seg, MemorySegment::free, Buffer.DataType.DATA_BUFFER, size);
+    }
+
+    public static BufferBuilder createEmptyBufferBuilder(int bufferSize) {
+        return new BufferBuilder(
+                MemorySegmentFactory.allocateUnpooledSegment(bufferSize),
+                FreeingBufferRecycler.INSTANCE);
+    }
 }

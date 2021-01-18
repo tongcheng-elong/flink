@@ -27,10 +27,10 @@ under the License.
 
 ## 什么是 Savepoint ？ Savepoint 与 Checkpoint 有什么不同？
 
-Savepoint 是依据 Flink [checkpointing 机制]({{ site.baseurl }}/zh/internals/stream_checkpointing.html)所创建的流作业执行状态的一致镜像。 你可以使用 Savepoint 进行 Flink 作业的停止与重启、fork 或者更新。 Savepoint 由两部分组成：稳定存储（列入 HDFS，S3，...) 上包含二进制文件的目录（通常很大），和元数据文件（相对较小）。 稳定存储上的文件表示作业执行状态的数据镜像。 Savepoint 的元数据文件以（绝对路径）的形式包含（主要）指向作为 Savepoint 一部分的稳定存储上的所有文件的指针。
+Savepoint 是依据 Flink [checkpointing 机制]({% link learn-flink/fault_tolerance.zh.md %})所创建的流作业执行状态的一致镜像。 你可以使用 Savepoint 进行 Flink 作业的停止与重启、fork 或者更新。 Savepoint 由两部分组成：稳定存储（列入 HDFS，S3，...) 上包含二进制文件的目录（通常很大），和元数据文件（相对较小）。 稳定存储上的文件表示作业执行状态的数据镜像。 Savepoint 的元数据文件以（绝对路径）的形式包含（主要）指向作为 Savepoint 一部分的稳定存储上的所有文件的指针。
 
 <div class="alert alert-warning">
-<strong>注意:</strong> 为了允许程序和 Flink 版本之间的升级，请务必查看以下有关<a href="#assigning-operator-ids">分配算子 ID </a>的部分 。
+<strong>注意:</strong> 为了允许程序和 Flink 版本之间的升级，请务必查看以下有关<a href="#分配算子-id">分配算子 ID </a>的部分 。
 </div>
 从概念上讲， Flink 的 Savepoint 与 Checkpoint 的不同之处类似于传统数据库中的备份与恢复日志之间的差异。 Checkpoint 的主要目的是为意外失败的作业提供恢复机制。 Checkpoint 的生命周期由 Flink 管理，即 Flink 创建，管理和删除 Checkpoint - 无需用户交互。 作为一种恢复和定期触发的方法，Checkpoint 实现有两个设计目标：i）轻量级创建和 ii）尽可能快地恢复。 可能会利用某些特定的属性来达到这个，例如， 工作代码在执行尝试之间不会改变。 在用户终止作业后，通常会删除 Checkpoint（除非明确配置为保留的 Checkpoint）。
 
@@ -72,13 +72,13 @@ mapper-id   | State of StatefulMapper
 
 ## 算子
 
-你可以使用[命令行客户端]({{site.baseurl}}/zh/ops/cli.html#Savepoint)来*触发 Savepoint*，*触发 Savepoint 并取消作业*，*从 Savepoint* 恢复，以及*删除 Savepoint*。
+你可以使用[命令行客户端]({% link deployment/cli.zh.md %}#Savepoint)来*触发 Savepoint*，*触发 Savepoint 并取消作业*，*从 Savepoint* 恢复，以及*删除 Savepoint*。
 
 从 Flink 1.2.0 开始，还可以使用 webui *从 Savepoint 恢复*。
 
 ### 触发 Savepoint
 
-当触发 Savepoint 时，将创建一个新的 Savepoint 目录，其中存储数据和元数据。可以通过[配置默认目标目录](#configuration)或使用触发器命令指定自定义目标目录(参见[`:targetDirectory`参数](#触发-savepoint-1)来控制该目录的位置。
+当触发 Savepoint 时，将创建一个新的 Savepoint 目录，其中存储数据和元数据。可以通过[配置默认目标目录](#配置)或使用触发器命令指定自定义目标目录(参见[`:targetDirectory`参数](#触发-savepoint-1)来控制该目录的位置。
 
 <div class="alert alert-warning">
 <strong>注意:</strong>目标目录必须是 JobManager(s) 和 TaskManager(s) 都可以访问的位置，例如分布式文件系统上的位置。
@@ -164,7 +164,7 @@ $ bin/flink savepoint -d :savepointPath
 
 ### 配置
 
-你可以通过 `state.savepoint.dir` 配置 savepoint 的默认目录。 触发 savepoint 时，将使用此目录来存储 savepoint。 你可以通过使用触发器命令指定自定义目标目录来覆盖缺省值（请参阅[`:targetDirectory`参数](#触发-savepoint-1)）。
+你可以通过 `state.savepoints.dir` 配置 savepoint 的默认目录。 触发 savepoint 时，将使用此目录来存储 savepoint。 你可以通过使用触发器命令指定自定义目标目录来覆盖缺省值（请参阅[`:targetDirectory`参数](#触发-savepoint-1)）。
 
 
 {% highlight yaml %}
@@ -220,7 +220,7 @@ $ bin/flink run -s :savepointPath -n [:runArgs]
 
 如果 Savepoint 是用 Flink >= 1.2.0 触发的，并且没有使用像 `Checkpointed` 这样的不推荐的状态API，那么你可以简单地从 Savepoint 恢复程序并指定新的并行度。
 
-如果你正在从 Flink < 1.2.0 触发的 Savepoint 恢复，或者使用现在已经废弃的 api，那么你首先必须将作业和 Savepoint 迁移到 Flink >= 1.2.0，然后才能更改并行度。参见[升级作业和Flink版本指南]({{site.baseurl}}/zh/ops/upgrading.html)。
+如果你正在从 Flink < 1.2.0 触发的 Savepoint 恢复，或者使用现在已经废弃的 api，那么你首先必须将作业和 Savepoint 迁移到 Flink >= 1.2.0，然后才能更改并行度。参见[升级作业和Flink版本指南]({% link ops/upgrading.zh.md %})。
 
 ### 我可以将 savepoint 文件移动到稳定存储上吗?
 

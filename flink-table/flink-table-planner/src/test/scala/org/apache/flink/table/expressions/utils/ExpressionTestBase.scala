@@ -20,7 +20,6 @@ package org.apache.flink.table.expressions.utils
 
 import java.util
 import java.util.concurrent.Future
-
 import org.apache.calcite.plan.hep.{HepMatchOrder, HepPlanner, HepProgramBuilder}
 import org.apache.calcite.rel.RelNode
 import org.apache.calcite.rex.RexNode
@@ -37,19 +36,21 @@ import org.apache.flink.api.java.{DataSet => JDataSet}
 import org.apache.flink.api.scala.{DataSet, ExecutionEnvironment}
 import org.apache.flink.configuration.Configuration
 import org.apache.flink.core.fs.Path
-import org.apache.flink.table.api.scala.BatchTableEnvironment
+import org.apache.flink.table.api.bridge.scala.BatchTableEnvironment
 import org.apache.flink.table.api.TableConfig
 import org.apache.flink.table.api.internal.TableEnvImpl
-import org.apache.flink.table.api.scala.internal.BatchTableEnvironmentImpl
-import org.apache.flink.table.calcite.FlinkRelBuilder
+import org.apache.flink.table.api.bridge.scala.internal.BatchTableEnvironmentImpl
+import org.apache.flink.table.calcite.{CalciteParser, FlinkRelBuilder}
 import org.apache.flink.table.codegen.{Compiler, FunctionCodeGenerator, GeneratedFunction}
 import org.apache.flink.table.expressions.{Expression, ExpressionParser}
 import org.apache.flink.table.functions.ScalarFunction
 import org.apache.flink.table.plan.nodes.dataset.{DataSetCalc, DataSetScan}
 import org.apache.flink.table.plan.rules.FlinkRuleSets
+import org.apache.flink.table.utils.LegacyRowResource
 import org.apache.flink.types.Row
+
 import org.junit.Assert._
-import org.junit.{After, Before}
+import org.junit.{After, Before, Rule}
 import org.mockito.Mockito._
 
 import scala.collection.mutable
@@ -58,6 +59,9 @@ import scala.collection.mutable
   * Base test class for expression tests.
   */
 abstract class ExpressionTestBase {
+
+  @Rule
+  def usesLegacyRows: LegacyRowResource = LegacyRowResource.INSTANCE
 
   private val testExprs = mutable.ArrayBuffer[(String, RexNode, String)]()
 
@@ -88,7 +92,7 @@ abstract class ExpressionTestBase {
 
     val env = ExecutionEnvironment.getExecutionEnvironment
     val tEnv = BatchTableEnvironment.create(env).asInstanceOf[BatchTableEnvironmentImpl]
-    tEnv.registerDataSet(tableName, dataSetMock)
+    tEnv.createTemporaryView(tableName, dataSetMock)
     functions.foreach(f => tEnv.registerFunction(f._1, f._2))
 
     // prepare RelBuilder
@@ -179,7 +183,8 @@ abstract class ExpressionTestBase {
 
   private def addSqlTestExpr(sqlExpr: String, expected: String): Unit = {
     // create RelNode from SQL expression
-    val parsed = planner.parse(s"SELECT $sqlExpr FROM $tableName")
+    val parsed = new CalciteParser(context._2.getParserConfig)
+      .parse(s"SELECT $sqlExpr FROM $tableName")
     val validated = planner.validate(parsed)
     val converted = planner.rel(validated).rel
 

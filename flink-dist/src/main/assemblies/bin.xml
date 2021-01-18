@@ -38,9 +38,19 @@ under the License.
 			<useTransitiveFiltering>true</useTransitiveFiltering>
 
 			<includes>
-				<include>org.slf4j:slf4j-log4j12</include>
-				<include>log4j:log4j</include>
+				<include>org.apache.logging.log4j:log4j-api</include>
+				<include>org.apache.logging.log4j:log4j-core</include>
+				<include>org.apache.logging.log4j:log4j-slf4j-impl</include>
+				<include>org.apache.logging.log4j:log4j-1.2-api</include>
 			</includes>
+		</dependencySet>
+		<dependencySet>
+			<outputDirectory>lib</outputDirectory>
+			<unpack>false</unpack>
+			<includes>
+				<include>org.apache.flink:flink-shaded-zookeeper-3:jar:${zookeeper.version}-${flink.shaded.version}</include>
+			</includes>
+			<outputFileNameMapping>flink-shaded-zookeeper-${zookeeper.version}.jar</outputFileNameMapping>
 		</dependencySet>
 	</dependencySets>
 
@@ -49,6 +59,13 @@ under the License.
 		<file>
 			<source>target/flink-dist_${scala.binary.version}-${project.version}.jar</source>
 			<outputDirectory>lib/</outputDirectory>
+			<fileMode>0644</fileMode>
+		</file>
+
+		<!-- copy bash utils -->
+		<file>
+			<source>target/bash-java-utils.jar</source>
+			<outputDirectory>bin/</outputDirectory>
 			<fileMode>0644</fileMode>
 		</file>
 
@@ -67,6 +84,21 @@ under the License.
 			<fileMode>0644</fileMode>
 		</file>
 
+		<!-- Built-in formats -->
+		<file>
+			<source>../flink-formats/flink-csv/target/flink-csv-${project.version}.jar</source>
+			<outputDirectory>lib/</outputDirectory>
+			<destName>flink-csv-${project.version}.jar</destName>
+			<fileMode>0644</fileMode>
+		</file>
+
+		<file>
+			<source>../flink-formats/flink-json/target/flink-json-${project.version}.jar</source>
+			<outputDirectory>lib/</outputDirectory>
+			<destName>flink-json-${project.version}.jar</destName>
+			<fileMode>0644</fileMode>
+		</file>
+
 		<!-- copy the config file -->
 		<file>
 			<source>src/main/resources/flink-conf.yaml</source>
@@ -79,21 +111,9 @@ under the License.
 			<outputDirectory/>
 			<fileMode>0644</fileMode>
 		</file>
-
-		<file>
-			<source>../NOTICE-binary</source>
-			<outputDirectory/>
-			<destName>NOTICE</destName>
-			<fileMode>0644</fileMode>
-		</file>
 	</files>
 
 	<fileSets>
-		<fileSet>
-			<directory>../licenses-binary</directory>
-			<outputDirectory>licenses</outputDirectory>
-			<fileMode>0644</fileMode>
-		</fileSet>
 		<!-- copy start scripts -->
 		<fileSet>
 			<directory>src/main/flink-bin/bin</directory>
@@ -108,11 +128,14 @@ under the License.
 			<fileMode>0755</fileMode>
 		</fileSet>
 
-		<!-- flink scala shell-->
+		<!-- copy python scripts -->
 		<fileSet>
-			<directory>../flink-scala-shell/start-script/</directory>
+			<directory>../flink-python/bin/</directory>
 			<outputDirectory>bin</outputDirectory>
-			<fileMode>755</fileMode>
+			<fileMode>0755</fileMode>
+			<excludes>
+				<exclude>pyflink-udf-runner.*</exclude>
+			</excludes>
 		</fileSet>
 
 		<!-- copy SQL client -->
@@ -139,6 +162,13 @@ under the License.
 		<!-- copy Mesos start scripts -->
 		<fileSet>
 			<directory>src/main/flink-bin/mesos-bin</directory>
+			<outputDirectory>bin</outputDirectory>
+			<fileMode>0755</fileMode>
+		</fileSet>
+
+		<!-- copy kubernetes start scripts -->
+		<fileSet>
+			<directory>src/main/flink-bin/kubernetes-bin</directory>
 			<outputDirectory>bin</outputDirectory>
 			<fileMode>0755</fileMode>
 		</fileSet>
@@ -213,6 +243,7 @@ under the License.
 			<excludes>
 				<exclude>flink-examples-streaming*.jar</exclude>
 				<exclude>original-*.jar</exclude>
+				<exclude>MatrixVectorMul.jar</exclude>
 			</excludes>
 		</fileSet>
 
@@ -230,17 +261,6 @@ under the License.
 		</fileSet>
 		<fileSet>
 			<directory>../flink-examples/flink-examples-build-helper/flink-examples-streaming-state-machine/target</directory>
-			<outputDirectory>examples/streaming</outputDirectory>
-			<fileMode>0644</fileMode>
-			<includes>
-				<include>*.jar</include>
-			</includes>
-			<excludes>
-				<exclude>original-*.jar</exclude>
-			</excludes>
-		</fileSet>
-		<fileSet>
-			<directory>../flink-examples/flink-examples-build-helper/flink-examples-streaming-click-event-count/target</directory>
 			<outputDirectory>examples/streaming</outputDirectory>
 			<fileMode>0644</fileMode>
 			<includes>

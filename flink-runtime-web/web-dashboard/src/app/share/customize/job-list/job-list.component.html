@@ -24,7 +24,7 @@
     [nzShowPagination]="false">
     <thead (nzSortChange)="sort($event)" nzSingleSort>
       <tr>
-        <th>Job Name</th>
+        <th nzWidth="40%">Job Name</th>
         <th nzShowSort nzSortKey="start-time">Start Time</th>
         <th nzShowSort nzSortKey="duration">Duration</th>
         <th nzShowSort nzSortKey="end-time">End Time</th>
@@ -33,7 +33,7 @@
       </tr>
     </thead>
     <tbody>
-      <tr *ngFor="let job of listOfJob; trackBy:trackJobBy;" (click)="navigateToJob(job.jid)" class="clickable">
+      <tr *ngFor="let job of listOfJob; trackBy:trackJobBy;" (click)="navigateToJob(job)" class="clickable">
         <td>{{ job.name }}</td>
         <td>{{ job["start-time"] | humanizeDate: 'yyyy-MM-dd HH:mm:ss' }}</td>
         <td>{{ job.duration | humanizeDuration }}</td>

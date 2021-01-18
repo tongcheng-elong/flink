@@ -19,26 +19,24 @@
 package org.apache.flink.table.planner.codegen
 
 import org.apache.flink.api.common.functions.{MapFunction, RichMapFunction}
-import org.apache.flink.configuration.Configuration
-import org.apache.flink.metrics.MetricGroup
 import org.apache.flink.table.api.{TableConfig, TableException}
-import org.apache.flink.table.dataformat.BinaryStringUtil.safeToString
-import org.apache.flink.table.dataformat.{BinaryString, Decimal, GenericRow}
-import org.apache.flink.table.functions.{FunctionContext, UserDefinedFunction}
+import org.apache.flink.table.data.binary.{BinaryStringData, BinaryStringDataUtil}
+import org.apache.flink.table.data.{DecimalData, GenericRowData, TimestampData}
+import org.apache.flink.table.functions.{ConstantFunctionContext, FunctionContext, UserDefinedFunction}
 import org.apache.flink.table.planner.calcite.FlinkTypeFactory
 import org.apache.flink.table.planner.codegen.FunctionCodeGenerator.generateFunction
-import org.apache.flink.table.runtime.functions.SqlDateTimeUtils
+import org.apache.flink.table.planner.plan.utils.PythonUtil.containsPythonCall
+import org.apache.flink.table.planner.utils.Logging
+import org.apache.flink.table.types.DataType
 import org.apache.flink.table.types.logical.RowType
+import org.apache.flink.table.util.TimestampStringUtils.fromLocalDateTime
 
 import org.apache.calcite.avatica.util.ByteString
 import org.apache.calcite.rex.{RexBuilder, RexExecutor, RexNode}
 import org.apache.calcite.sql.`type`.SqlTypeName
-import org.apache.commons.lang3.StringEscapeUtils
-
-import java.io.File
-import java.util.TimeZone
 
 import scala.collection.JavaConverters._
+import scala.collection.mutable.ListBuffer
 
 /**
   * Evaluates constant expressions with code generator.
@@ -50,21 +48,32 @@ import scala.collection.JavaConverters._
 class ExpressionReducer(
     config: TableConfig,
     allowChangeNullability: Boolean = false)
-  extends RexExecutor {
+  extends RexExecutor
+  with Logging {
 
   private val EMPTY_ROW_TYPE = RowType.of()
-  private val EMPTY_ROW = new GenericRow(0)
+  private val EMPTY_ROW = new GenericRowData(0)
 
   override def reduce(
       rexBuilder: RexBuilder,
       constExprs: java.util.List[RexNode],
       reducedValues: java.util.List[RexNode]): Unit = {
 
+    val pythonUDFExprs = new ListBuffer[RexNode]()
+
     val literals = constExprs.asScala.map(e => (e.getType.getSqlTypeName, e)).flatMap {
+
+      // Skip expressions that contain python functions because it's quite expensive to
+      // call Python UDFs during optimization phase. They will be optimized during the runtime.
+      case (_, e) if containsPythonCall(e) =>
+        pythonUDFExprs += e
+        None
 
       // we don't support object literals yet, we skip those constant expressions
       case (SqlTypeName.ANY, _) |
+           (SqlTypeName.OTHER, _) |
            (SqlTypeName.ROW, _) |
+           (SqlTypeName.STRUCTURED, _) |
            (SqlTypeName.ARRAY, _) |
            (SqlTypeName.MAP, _) |
            (SqlTypeName.MULTISET, _) => None
@@ -83,12 +92,12 @@ class ExpressionReducer(
 
     val literalExprs = literals.map(exprGenerator.generateExpression)
     val result = exprGenerator.generateResultExpression(
-      literalExprs, resultType, classOf[GenericRow])
+      literalExprs, resultType, classOf[GenericRowData])
 
-    val generatedFunction = generateFunction[MapFunction[GenericRow, GenericRow]](
+    val generatedFunction = generateFunction[MapFunction[GenericRowData, GenericRowData]](
       ctx,
       "ExpressionReducer",
-      classOf[MapFunction[GenericRow, GenericRow]],
+      classOf[MapFunction[GenericRowData, GenericRowData]],
       s"""
          |${result.code}
          |return ${result.resultTerm};
@@ -98,19 +107,26 @@ class ExpressionReducer(
 
     val function = generatedFunction.newInstance(Thread.currentThread().getContextClassLoader)
     val richMapFunction = function match {
-      case r: RichMapFunction[GenericRow, GenericRow] => r
-      case _ => throw new TableException("RichMapFunction[GenericRow, GenericRow] required here")
+      case r: RichMapFunction[GenericRowData, GenericRowData] => r
+      case _ =>
+        throw new TableException("RichMapFunction[GenericRowData, GenericRowData] required here")
     }
 
-    val parameters = if (config.getConfiguration != null) {
-      config.getConfiguration
-    } else {
-      new Configuration()
-    }
+    val parameters = config.getConfiguration
     val reduced = try {
       richMapFunction.open(parameters)
       // execute
       richMapFunction.map(EMPTY_ROW)
+    } catch { case t: Throwable =>
+      // maybe a function accesses some cluster specific context information
+      // skip the expression reduction and try it again during runtime
+      LOG.warn(
+        "Unable to perform constant expression reduction. " +
+          "An exception occurred during the evaluation. " +
+          "One or more expressions will be executed unreduced.",
+        t)
+      reducedValues.addAll(constExprs)
+      return
     } finally {
       richMapFunction.close()
     }
@@ -120,59 +136,77 @@ class ExpressionReducer(
     var reducedIdx = 0
     while (i < constExprs.size()) {
       val unreduced = constExprs.get(i)
-      unreduced.getType.getSqlTypeName match {
-        // we insert the original expression for object literals
-        case SqlTypeName.ANY |
-             SqlTypeName.ROW |
-             SqlTypeName.ARRAY |
-             SqlTypeName.MAP |
-             SqlTypeName.MULTISET =>
-          reducedValues.add(unreduced)
-        case SqlTypeName.VARCHAR | SqlTypeName.CHAR =>
-          val escapeVarchar = StringEscapeUtils
-            .escapeJava(safeToString(reduced.getField(reducedIdx).asInstanceOf[BinaryString]))
-          reducedValues.add(maySkipNullLiteralReduce(rexBuilder, escapeVarchar, unreduced))
-          reducedIdx += 1
-        case SqlTypeName.VARBINARY | SqlTypeName.BINARY =>
-          val reducedValue = reduced.getField(reducedIdx)
-          val value = if (null != reducedValue) {
-            new ByteString(reduced.getField(reducedIdx).asInstanceOf[Array[Byte]])
-          } else {
-            reducedValue
-          }
-          reducedValues.add(maySkipNullLiteralReduce(rexBuilder, value, unreduced))
-          reducedIdx += 1
-        case SqlTypeName.TIMESTAMP_WITH_LOCAL_TIME_ZONE =>
-          val value = if (!reduced.isNullAt(reducedIdx)) {
-            val mills = reduced.getField(reducedIdx).asInstanceOf[Long]
-            Long.box(SqlDateTimeUtils.timestampWithLocalZoneToTimestamp(
-              mills, TimeZone.getTimeZone(config.getLocalTimeZone)))
-          } else {
-            null
-          }
-          reducedValues.add(maySkipNullLiteralReduce(rexBuilder, value, unreduced))
-          reducedIdx += 1
-        case SqlTypeName.DECIMAL =>
-          val reducedValue = reduced.getField(reducedIdx)
-          val value = if (reducedValue != null) {
-            reducedValue.asInstanceOf[Decimal].toBigDecimal
-          } else {
-            reducedValue
-          }
-          reducedValues.add(maySkipNullLiteralReduce(rexBuilder, value, unreduced))
-          reducedIdx += 1
-        case _ =>
-          val reducedValue = reduced.getField(reducedIdx)
-          // RexBuilder handle double literal incorrectly, convert it into BigDecimal manually
-          val value = if (reducedValue != null &&
-            unreduced.getType.getSqlTypeName == SqlTypeName.DOUBLE) {
-            new java.math.BigDecimal(reducedValue.asInstanceOf[Number].doubleValue())
-          } else {
-            reducedValue
-          }
+      // use eq to compare reference
+      if (pythonUDFExprs.exists(_ eq unreduced)) {
+        // if contains python function then just insert the original expression.
+        reducedValues.add(unreduced)
+      } else {
+        unreduced.getType.getSqlTypeName match {
+          // we insert the original expression for object literals
+          case SqlTypeName.ANY |
+               SqlTypeName.OTHER |
+               SqlTypeName.ROW |
+               SqlTypeName.STRUCTURED |
+               SqlTypeName.ARRAY |
+               SqlTypeName.MAP |
+               SqlTypeName.MULTISET =>
+            reducedValues.add(unreduced)
+          case SqlTypeName.VARCHAR | SqlTypeName.CHAR =>
+            val escapeVarchar = BinaryStringDataUtil.safeToString(
+              reduced.getField(reducedIdx).asInstanceOf[BinaryStringData])
+            reducedValues.add(maySkipNullLiteralReduce(rexBuilder, escapeVarchar, unreduced))
+            reducedIdx += 1
+          case SqlTypeName.VARBINARY | SqlTypeName.BINARY =>
+            val reducedValue = reduced.getField(reducedIdx)
+            val value = if (null != reducedValue) {
+              new ByteString(reduced.getField(reducedIdx).asInstanceOf[Array[Byte]])
+            } else {
+              reducedValue
+            }
+            reducedValues.add(maySkipNullLiteralReduce(rexBuilder, value, unreduced))
+            reducedIdx += 1
+          case SqlTypeName.TIMESTAMP_WITH_LOCAL_TIME_ZONE =>
+            val reducedValue = reduced.getField(reducedIdx)
+            val value = if (reducedValue != null) {
+              val dt = reducedValue.asInstanceOf[TimestampData].toLocalDateTime
+              fromLocalDateTime(dt)
+            } else {
+              reducedValue
+            }
+            reducedValues.add(maySkipNullLiteralReduce(rexBuilder, value, unreduced))
+            reducedIdx += 1
+          case SqlTypeName.DECIMAL =>
+            val reducedValue = reduced.getField(reducedIdx)
+            val value = if (reducedValue != null) {
+              reducedValue.asInstanceOf[DecimalData].toBigDecimal
+            } else {
+              reducedValue
+            }
+            reducedValues.add(maySkipNullLiteralReduce(rexBuilder, value, unreduced))
+            reducedIdx += 1
+          case SqlTypeName.TIMESTAMP =>
+            val reducedValue = reduced.getField(reducedIdx)
+            val value = if (reducedValue != null) {
+              val dt = reducedValue.asInstanceOf[TimestampData].toLocalDateTime
+              fromLocalDateTime(dt)
+            } else {
+              reducedValue
+            }
+            reducedValues.add(maySkipNullLiteralReduce(rexBuilder, value, unreduced))
+            reducedIdx += 1
+          case _ =>
+            val reducedValue = reduced.getField(reducedIdx)
+            // RexBuilder handle double literal incorrectly, convert it into BigDecimal manually
+            val value = if (reducedValue != null &&
+              unreduced.getType.getSqlTypeName == SqlTypeName.DOUBLE) {
+              new java.math.BigDecimal(reducedValue.asInstanceOf[Number].doubleValue())
+            } else {
+              reducedValue
+            }
 
-          reducedValues.add(maySkipNullLiteralReduce(rexBuilder, value, unreduced))
-          reducedIdx += 1
+            reducedValues.add(maySkipNullLiteralReduce(rexBuilder, value, unreduced))
+            reducedIdx += 1
+        }
       }
       i += 1
     }
@@ -213,35 +247,6 @@ class ExpressionReducer(
 }
 
 /**
-  * A [[ConstantFunctionContext]] allows to obtain user-defined configuration information set
-  * in [[TableConfig]].
-  *
-  * @param parameters User-defined configuration set in [[TableConfig]].
-  */
-class ConstantFunctionContext(parameters: Configuration) extends FunctionContext(null) {
-
-  override def getMetricGroup: MetricGroup = {
-    throw new UnsupportedOperationException("getMetricGroup is not supported when optimizing")
-  }
-
-  override def getCachedFile(name: String): File = {
-    throw new UnsupportedOperationException("getCachedFile is not supported when optimizing")
-  }
-
-  /**
-    * Gets the user-defined configuration value associated with the given key as a string.
-    *
-    * @param key          key pointing to the associated value
-    * @param defaultValue default value which is returned in case user-defined configuration
-    *                     value is null or there is no value associated with the given key
-    * @return (default) value associated with the given key
-    */
-  override def getJobParameter(key: String, defaultValue: String): String = {
-    parameters.getString(key, defaultValue)
-  }
-}
-
-/**
   * Constant expression code generator context.
   */
 class ConstantCodeGeneratorContext(tableConfig: TableConfig)
@@ -251,5 +256,12 @@ class ConstantCodeGeneratorContext(tableConfig: TableConfig)
       functionContextClass: Class[_ <: FunctionContext] = classOf[FunctionContext],
       runtimeContextTerm: String = null): String = {
     super.addReusableFunction(function, classOf[ConstantFunctionContext], "parameters")
+  }
+
+  override def addReusableConverter(
+      dataType: DataType,
+      classLoaderTerm: String = null)
+    : String = {
+    super.addReusableConverter(dataType, "this.getClass().getClassLoader()")
   }
 }

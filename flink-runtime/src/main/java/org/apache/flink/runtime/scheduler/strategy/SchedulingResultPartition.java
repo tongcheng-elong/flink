@@ -19,81 +19,29 @@
 package org.apache.flink.runtime.scheduler.strategy;
 
 import org.apache.flink.runtime.executiongraph.IntermediateResultPartition;
-import org.apache.flink.runtime.io.network.partition.ResultPartitionType;
 import org.apache.flink.runtime.jobgraph.IntermediateDataSetID;
 import org.apache.flink.runtime.jobgraph.IntermediateResultPartitionID;
+import org.apache.flink.runtime.topology.Result;
 
-import java.util.Collection;
+/** Representation of {@link IntermediateResultPartition}. */
+public interface SchedulingResultPartition
+        extends Result<
+                ExecutionVertexID,
+                IntermediateResultPartitionID,
+                SchedulingExecutionVertex,
+                SchedulingResultPartition> {
 
-/**
- * Representation of {@link IntermediateResultPartition}.
- */
-public interface SchedulingResultPartition {
+    /**
+     * Gets id of the intermediate result.
+     *
+     * @return id of the intermediate result
+     */
+    IntermediateDataSetID getResultId();
 
-	/**
-	 * Gets id of the result partition.
-	 *
-	 * @return id of the result partition
-	 */
-	IntermediateResultPartitionID getId();
-
-	/**
-	 * Gets id of the intermediate result.
-	 *
-	 * @return id of the intermediate result
-	 */
-	IntermediateDataSetID getResultId();
-
-	/**
-	 * Gets the {@link ResultPartitionType}.
-	 *
-	 * @return result partition type
-	 */
-	ResultPartitionType getPartitionType();
-
-	/**
-	 * Gets the {@link ResultPartitionState}.
-	 *
-	 * @return result partition state
-	 */
-	ResultPartitionState getState();
-
-	/**
-	 * Gets the producer of this result partition.
-	 *
-	 * @return producer vertex of this result partition
-	 */
-	SchedulingExecutionVertex getProducer();
-
-	/**
-	 * Gets the consumers of this result partition.
-	 *
-	 * @return Collection of consumer vertices of this result partition
-	 */
-	Collection<SchedulingExecutionVertex> getConsumers();
-
-	/**
-	 * State of the result partition.
-	 */
-	enum ResultPartitionState {
-		/**
-		 * Producer is not yet running or in abnormal state.
-		 */
-		EMPTY,
-
-		/**
-		 * Producer is running.
-		 */
-		PRODUCING,
-
-		/**
-		 * Producer has terminated.
-		 */
-		DONE,
-
-		/**
-		 * Partition has been released.
-		 */
-		RELEASED
-	}
+    /**
+     * Gets the {@link ResultPartitionState}.
+     *
+     * @return result partition state
+     */
+    ResultPartitionState getState();
 }

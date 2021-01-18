@@ -18,7 +18,7 @@
 
 package org.apache.flink.table.catalog;
 
-import org.apache.flink.table.api.java.internal.StreamTableEnvironmentImpl;
+import org.apache.flink.table.api.bridge.java.internal.StreamTableEnvironmentImpl;
 import org.apache.flink.table.utils.StreamTableTestUtil;
 import org.apache.flink.util.Preconditions;
 
@@ -43,256 +43,250 @@ import static org.apache.flink.table.catalog.CatalogStructureBuilder.database;
 import static org.apache.flink.table.catalog.CatalogStructureBuilder.root;
 import static org.apache.flink.table.catalog.CatalogStructureBuilder.table;
 import static org.apache.flink.table.catalog.PathResolutionTest.TestSpec.testSpec;
+import static org.hamcrest.CoreMatchers.is;
 import static org.junit.Assert.assertThat;
 
-/**
- * Tests for path resolution in Table API & SQL.
- */
+/** Tests for path resolution in Table API & SQL. */
 @RunWith(Parameterized.class)
 public class PathResolutionTest {
-	@Parameters(name = "{index}: {0}")
-	public static List<TestSpec> testData() throws Exception {
-		return asList(
-			testSpec("simpleInDefaultPath")
-				.withCatalogManager(simpleCatalog())
-				.tableApiLookupPath("tab1")
-				.sqlLookupPath("tab1")
-				.expectPath(BUILTIN_CATALOG_NAME, "default", "tab1"),
+    @Parameters(name = "{index}: {0}")
+    public static List<TestSpec> testData() throws Exception {
+        return asList(
+                testSpec("simpleInDefaultPath")
+                        .withCatalogManager(simpleCatalog())
+                        .tableApiLookupPath("tab1")
+                        .sqlLookupPath("tab1")
+                        .expectPath(BUILTIN_CATALOG_NAME, "default", "tab1"),
+                testSpec("simpleInChangedDefaultCatalog")
+                        .withCatalogManager(simpleCatalog())
+                        .withDefaultPath("cat1")
+                        .tableApiLookupPath("tab1")
+                        .sqlLookupPath("tab1")
+                        .expectPath("cat1", "db1", "tab1"),
+                testSpec("simpleInChangedDefaultPath")
+                        .withCatalogManager(simpleCatalog())
+                        .withDefaultPath("cat1", "db2")
+                        .tableApiLookupPath("tab1")
+                        .sqlLookupPath("tab1")
+                        .expectPath("cat1", "db2", "tab1"),
+                testSpec("qualifiedWithDatabase")
+                        .withCatalogManager(simpleCatalog())
+                        .withDefaultPath(BUILTIN_CATALOG_NAME, "default")
+                        .tableApiLookupPath("db1", "tab1")
+                        .sqlLookupPath("db1.tab1")
+                        .expectPath(BUILTIN_CATALOG_NAME, "db1", "tab1"),
+                testSpec("fullyQualifiedName")
+                        .withCatalogManager(simpleCatalog())
+                        .withDefaultPath(BUILTIN_CATALOG_NAME, "default")
+                        .tableApiLookupPath("cat1", "db1", "tab1")
+                        .sqlLookupPath("cat1.db1.tab1")
+                        .expectPath("cat1", "db1", "tab1"),
+                testSpec("dotInUnqualifiedTableName")
+                        .withCatalogManager(catalogWithSpecialCharacters())
+                        .tableApiLookupPath("tab.1")
+                        .sqlLookupPath("`tab.1`")
+                        .expectPath(BUILTIN_CATALOG_NAME, "default", "tab.1"),
+                testSpec("dotInDatabaseName")
+                        .withCatalogManager(catalogWithSpecialCharacters())
+                        .tableApiLookupPath("default.db", "tab1")
+                        .sqlLookupPath("`default.db`.tab1")
+                        .expectPath(BUILTIN_CATALOG_NAME, "default.db", "tab1"),
+                testSpec("dotInDefaultDatabaseName")
+                        .withCatalogManager(catalogWithSpecialCharacters())
+                        .withDefaultPath(BUILTIN_CATALOG_NAME, "default.db")
+                        .tableApiLookupPath("tab1")
+                        .sqlLookupPath("tab1")
+                        .expectPath(BUILTIN_CATALOG_NAME, "default.db", "tab1"),
+                testSpec("spaceInNames")
+                        .withCatalogManager(catalogWithSpecialCharacters())
+                        .tableApiLookupPath("default db", "tab 1")
+                        .sqlLookupPath("`default db`.`tab 1`")
+                        .expectPath(BUILTIN_CATALOG_NAME, "default db", "tab 1"),
+                testSpec("shadowingWithTemporaryTable")
+                        .withCatalogManager(catalogWithTemporaryObjects())
+                        .tableApiLookupPath("cat1", "db1", "tab1")
+                        .sqlLookupPath("cat1.db1.tab1")
+                        .expectTemporaryPath("cat1", "db1", "tab1"));
+    }
 
-			testSpec("simpleInChangedDefaultCatalog")
-				.withCatalogManager(simpleCatalog())
-				.withDefaultPath("cat1")
-				.tableApiLookupPath("tab1")
-				.sqlLookupPath("tab1")
-				.expectPath("cat1", "db1", "tab1"),
+    private static CatalogManager simpleCatalog() throws Exception {
+        return root().builtin(database("default", table("tab1")), database("db1", table("tab1")))
+                .catalog("cat1", database("db1", table("tab1")), database("db2", table("tab1")))
+                .build();
+    }
 
-			testSpec("simpleInChangedDefaultPath")
-				.withCatalogManager(simpleCatalog())
-				.withDefaultPath("cat1", "db2")
-				.tableApiLookupPath("tab1")
-				.sqlLookupPath("tab1")
-				.expectPath("cat1", "db2", "tab1"),
+    private static CatalogManager catalogWithTemporaryObjects() throws Exception {
+        return root().builtin(database("default"))
+                .catalog("cat1", database("db1", table("tab1")))
+                .temporaryTable(ObjectIdentifier.of("cat1", "db1", "tab1"))
+                .build();
+    }
 
-			testSpec("qualifiedWithDatabase")
-				.withCatalogManager(simpleCatalog())
-				.withDefaultPath(BUILTIN_CATALOG_NAME, "default")
-				.tableApiLookupPath("db1", "tab1")
-				.sqlLookupPath("db1.tab1")
-				.expectPath(BUILTIN_CATALOG_NAME, "db1", "tab1"),
+    private static CatalogManager catalogWithSpecialCharacters() throws Exception {
+        return root().builtin(
+                        database("default", table("tab.1")),
+                        database("default.db", table("tab1"), table("tab.1")),
+                        database("default db", table("tab 1")))
+                .build();
+    }
 
-			testSpec("fullyQualifiedName")
-				.withCatalogManager(simpleCatalog())
-				.withDefaultPath(BUILTIN_CATALOG_NAME, "default")
-				.tableApiLookupPath("cat1", "db1", "tab1")
-				.sqlLookupPath("cat1.db1.tab1")
-				.expectPath("cat1", "db1", "tab1"),
+    @Parameter public TestSpec testSpec;
 
-			testSpec("dotInUnqualifiedTableName")
-				.withCatalogManager(catalogWithSpecialCharacters())
-				.tableApiLookupPath("tab.1")
-				.sqlLookupPath("`tab.1`")
-				.expectPath(BUILTIN_CATALOG_NAME, "default", "tab.1"),
+    @Test
+    public void testTableApiPathResolution() {
+        List<String> lookupPath = testSpec.getTableApiLookupPath();
+        CatalogManager catalogManager = testSpec.getCatalogManager();
+        testSpec.getDefaultCatalog().ifPresent(catalogManager::setCurrentCatalog);
+        testSpec.getDefaultDatabase().ifPresent(catalogManager::setCurrentDatabase);
 
-			testSpec("dotInDatabaseName")
-				.withCatalogManager(catalogWithSpecialCharacters())
-				.tableApiLookupPath("default.db", "tab1")
-				.sqlLookupPath("`default.db`.tab1")
-				.expectPath(BUILTIN_CATALOG_NAME, "default.db", "tab1"),
+        UnresolvedIdentifier unresolvedIdentifier = UnresolvedIdentifier.of(lookupPath);
+        ObjectIdentifier identifier = catalogManager.qualifyIdentifier(unresolvedIdentifier);
 
-			testSpec("dotInDefaultDatabaseName")
-				.withCatalogManager(catalogWithSpecialCharacters())
-				.withDefaultPath(BUILTIN_CATALOG_NAME, "default.db")
-				.tableApiLookupPath("tab1")
-				.sqlLookupPath("tab1")
-				.expectPath(BUILTIN_CATALOG_NAME, "default.db", "tab1"),
+        assertThat(
+                Arrays.asList(
+                        identifier.getCatalogName(),
+                        identifier.getDatabaseName(),
+                        identifier.getObjectName()),
+                CoreMatchers.equalTo(testSpec.getExpectedPath()));
+        Optional<CatalogManager.TableLookupResult> tableLookup =
+                catalogManager.getTable(identifier);
+        assertThat(tableLookup.isPresent(), is(true));
+        assertThat(tableLookup.get().isTemporary(), is(testSpec.isTemporaryObject()));
+    }
 
-			testSpec("spaceInNames")
-				.withCatalogManager(catalogWithSpecialCharacters())
-				.tableApiLookupPath("default db", "tab 1")
-				.sqlLookupPath("`default db`.`tab 1`")
-				.expectPath(BUILTIN_CATALOG_NAME, "default db", "tab 1")
-		);
-	}
+    @Test
+    public void testStreamSqlPathResolution() {
+        StreamTableTestUtil util =
+                new StreamTableTestUtil(new Some<>(testSpec.getCatalogManager()));
+        StreamTableEnvironmentImpl tEnv = util.javaTableEnv();
 
-	private static CatalogManager simpleCatalog() throws Exception {
-		return root()
-			.builtin(
-				database(
-					"default",
-					table("tab1")
-				),
-				database(
-					"db1",
-					table("tab1")
-				)
-			)
-			.catalog(
-				"cat1",
-				database(
-					"db1",
-					table("tab1")
-				),
-				database(
-					"db2",
-					table("tab1")
-				)
-			).build();
-	}
+        testSpec.getDefaultCatalog().ifPresent(tEnv::useCatalog);
+        testSpec.getDefaultDatabase().ifPresent(tEnv::useDatabase);
 
-	private static CatalogManager catalogWithSpecialCharacters() throws Exception {
-		return root()
-			.builtin(
-				database(
-					"default",
-					table("tab.1")
-				),
-				database(
-					"default.db",
-					table("tab1"),
-					table("tab.1")
-				),
-				database(
-					"default db",
-					table("tab 1")
-				)
-			).build();
-	}
+        util.verifyJavaSql(
+                format("SELECT * FROM %s", testSpec.getSqlPathToLookup()),
+                format(
+                        "StreamTableSourceScan(table=[[%s]], fields=[], source=[isTemporary=[%s]])",
+                        String.join(", ", testSpec.getExpectedPath()),
+                        testSpec.isTemporaryObject()));
+    }
 
-	@Parameter
-	public TestSpec testSpec;
+    static class TestSpec {
 
-	@Test
-	public void testTableApiPathResolution() {
-		List<String> lookupPath = testSpec.getTableApiLookupPath();
-		CatalogManager catalogManager = testSpec.getCatalogManager();
-		testSpec.getDefaultCatalog().ifPresent(catalogManager::setCurrentCatalog);
-		testSpec.getDefaultDatabase().ifPresent(catalogManager::setCurrentDatabase);
+        private String label;
+        private String sqlPathToLookup;
+        private List<String> tableApiLookupPath;
+        private List<String> expectedPath;
+        private boolean isTemporaryObject = false;
+        private String defaultCatalog;
+        private String defaultDatabase;
+        private CatalogManager catalogManager;
 
-		ObjectIdentifier identifier = catalogManager.qualifyIdentifier(lookupPath.toArray(new String[0]));
-		assertThat(
-			Arrays.asList(identifier.getCatalogName(), identifier.getDatabaseName(), identifier.getObjectName()),
-			CoreMatchers.equalTo(testSpec.getExpectedPath()));
-	}
+        public TestSpec(String label) {
+            this.label = label;
+        }
 
-	@Test
-	public void testStreamSqlPathResolution() {
-		StreamTableTestUtil util = new StreamTableTestUtil(new Some<>(testSpec.getCatalogManager()));
-		StreamTableEnvironmentImpl tEnv = util.javaTableEnv();
+        public static TestSpec testSpec(String label) {
+            return new TestSpec(label);
+        }
 
-		testSpec.getDefaultCatalog().ifPresent(tEnv::useCatalog);
-		testSpec.getDefaultDatabase().ifPresent(tEnv::useDatabase);
+        public TestSpec withCatalogManager(CatalogManager catalogManager) {
+            this.catalogManager = catalogManager;
+            return this;
+        }
 
-		util.verifyJavaSql(
-			format("SELECT * FROM %s", testSpec.getSqlPathToLookup()),
-			format(
-				"StreamTableSourceScan(table=[[%s]], fields=[], source=[()])",
-				String.join(", ", testSpec.getExpectedPath()))
-		);
-	}
+        public TestSpec tableApiLookupPath(String... path) {
+            this.tableApiLookupPath = asList(path);
+            return this;
+        }
 
-	static class TestSpec {
+        public TestSpec sqlLookupPath(String path) {
+            this.sqlPathToLookup = path;
+            return this;
+        }
 
-		private String label;
-		private String sqlPathToLookup;
-		private List<String> tableApiLookupPath;
-		private List<String> expectedPath;
-		private String defaultCatalog;
-		private String defaultDatabase;
-		private CatalogManager catalogManager;
+        public TestSpec expectPath(String... expectedPath) {
+            Preconditions.checkArgument(
+                    sqlPathToLookup != null && tableApiLookupPath != null,
+                    "Both sql & table API versions of path lookups required. Remember expectPath needs to be called last");
 
-		public TestSpec(String label) {
-			this.label = label;
-		}
+            Preconditions.checkArgument(
+                    catalogManager != null,
+                    "A catalog manager needs to provided. Remember expectPath needs to be called last");
 
-		public static TestSpec testSpec(String label) {
-			return new TestSpec(label);
-		}
+            this.expectedPath = asList(expectedPath);
+            return this;
+        }
 
-		public TestSpec withCatalogManager(CatalogManager catalogManager) {
-			this.catalogManager = catalogManager;
-			return this;
-		}
+        public TestSpec expectTemporaryPath(String... expectedPath) {
+            this.isTemporaryObject = true;
+            return expectPath(expectedPath);
+        }
 
-		public TestSpec tableApiLookupPath(String... path) {
-			this.tableApiLookupPath = asList(path);
-			return this;
-		}
+        public TestSpec withDefaultPath(String defaultCatalog) {
+            this.defaultCatalog = defaultCatalog;
+            return this;
+        }
 
-		public TestSpec sqlLookupPath(String path) {
-			this.sqlPathToLookup = path;
-			return this;
-		}
+        public TestSpec withDefaultPath(String defaultCatalog, String defaultDatabase) {
+            this.defaultCatalog = defaultCatalog;
+            this.defaultDatabase = defaultDatabase;
+            return this;
+        }
 
-		public TestSpec expectPath(String... expectedPath) {
-			Preconditions.checkArgument(
-				sqlPathToLookup != null && tableApiLookupPath != null,
-				"Both sql & table API versions of path lookups required. Remember expectPath needs to be called last");
+        public String getSqlPathToLookup() {
+            return sqlPathToLookup;
+        }
 
-			Preconditions.checkArgument(
-				catalogManager != null,
-				"A catalog manager needs to provided. Remember expectPath needs to be called last"
-			);
+        public List<String> getTableApiLookupPath() {
+            return tableApiLookupPath;
+        }
 
-			this.expectedPath = asList(expectedPath);
-			return this;
-		}
+        public CatalogManager getCatalogManager() {
+            return catalogManager;
+        }
 
-		public TestSpec withDefaultPath(String defaultCatalog) {
-			this.defaultCatalog = defaultCatalog;
-			return this;
-		}
+        public List<String> getExpectedPath() {
+            return expectedPath;
+        }
 
-		public TestSpec withDefaultPath(String defaultCatalog, String defaultDatabase) {
-			this.defaultCatalog = defaultCatalog;
-			this.defaultDatabase = defaultDatabase;
-			return this;
-		}
+        public Optional<String> getDefaultCatalog() {
+            return Optional.ofNullable(defaultCatalog);
+        }
 
-		public String getSqlPathToLookup() {
-			return sqlPathToLookup;
-		}
+        public Optional<String> getDefaultDatabase() {
+            return Optional.ofNullable(defaultDatabase);
+        }
 
-		public List<String> getTableApiLookupPath() {
-			return tableApiLookupPath;
-		}
+        public boolean isTemporaryObject() {
+            return isTemporaryObject;
+        }
 
-		public CatalogManager getCatalogManager() {
-			return catalogManager;
-		}
+        @Override
+        public String toString() {
 
-		public List<String> getExpectedPath() {
-			return expectedPath;
-		}
+            StringBuilder stringBuilder = new StringBuilder();
+            List<String> properties = new ArrayList<>();
 
-		public Optional<String> getDefaultCatalog() {
-			return Optional.ofNullable(defaultCatalog);
-		}
+            if (defaultCatalog != null) {
+                properties.add("defaultCatalog: " + defaultCatalog);
+            }
 
-		public Optional<String> getDefaultDatabase() {
-			return Optional.ofNullable(defaultDatabase);
-		}
+            if (defaultDatabase != null) {
+                properties.add("defaultDatabase: " + defaultDatabase);
+            }
 
-		@Override
-		public String toString() {
+            if (isTemporaryObject) {
+                properties.add("temporary: true");
+            }
 
-			StringBuilder stringBuilder = new StringBuilder();
-			List<String> properties = new ArrayList<>();
+            properties.add("sqlPath: " + sqlPathToLookup);
+            properties.add("tableApiPath: " + tableApiLookupPath);
+            properties.add("expectedPath: " + expectedPath);
 
-			if (defaultCatalog != null) {
-				properties.add("defaultCatalog: " + defaultCatalog);
-			}
+            stringBuilder.append(format("%s=[%s]", label, String.join(", ", properties)));
 
-			if (defaultDatabase != null) {
-				properties.add("defaultDatabase: " + defaultDatabase);
-			}
-
-			properties.add("sqlPath: " + sqlPathToLookup);
-			properties.add("tableApiPath: " + tableApiLookupPath);
-			properties.add("expectedPath: " + expectedPath);
-
-			stringBuilder.append(format("%s=[%s]", label, String.join(", ", properties)));
-
-			return stringBuilder.toString();
-		}
-	}
+            return stringBuilder.toString();
+        }
+    }
 }

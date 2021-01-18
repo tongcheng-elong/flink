@@ -18,16 +18,11 @@
 
 package org.apache.flink.runtime.scheduler.strategy;
 
-import org.apache.flink.runtime.jobgraph.JobGraph;
 import org.apache.flink.runtime.scheduler.SchedulerOperations;
 
-/**
- * Factory interface for {@link SchedulingStrategy}.
- */
+/** Factory interface for {@link SchedulingStrategy}. */
 public interface SchedulingStrategyFactory {
 
-	SchedulingStrategy createInstance(
-			SchedulerOperations schedulerOperations,
-			SchedulingTopology schedulingTopology,
-			JobGraph jobGraph);
+    SchedulingStrategy createInstance(
+            SchedulerOperations schedulerOperations, SchedulingTopology schedulingTopology);
 }

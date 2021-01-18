@@ -18,6 +18,8 @@
 
 package org.apache.flink.table.planner.plan.nodes.logical
 
+import org.apache.flink.table.catalog.{CatalogTable, ObjectIdentifier}
+import org.apache.flink.table.connector.sink.DynamicTableSink
 import org.apache.flink.table.planner.plan.nodes.FlinkConventions
 import org.apache.flink.table.planner.plan.nodes.calcite.{LogicalSink, Sink}
 import org.apache.flink.table.sinks.TableSink
@@ -32,19 +34,22 @@ import scala.collection.JavaConversions._
 
 /**
   * Sub-class of [[Sink]] that is a relational expression
-  * which writes out data of input node into a [[TableSink]].
+  * which writes out data of input node into a [[DynamicTableSink]].
   */
 class FlinkLogicalSink(
     cluster: RelOptCluster,
     traitSet: RelTraitSet,
     input: RelNode,
-    sink: TableSink[_],
-    sinkName: String)
-  extends Sink(cluster, traitSet, input, sink, sinkName)
+    tableIdentifier: ObjectIdentifier,
+    catalogTable: CatalogTable,
+    tableSink: DynamicTableSink,
+    val staticPartitions: Map[String, String])
+  extends Sink(cluster, traitSet, input, tableIdentifier, catalogTable, tableSink)
   with FlinkLogicalRel {
 
   override def copy(traitSet: RelTraitSet, inputs: util.List[RelNode]): RelNode = {
-    new FlinkLogicalSink(cluster, traitSet, inputs.head, sink, sinkName)
+    new FlinkLogicalSink(
+      cluster, traitSet, inputs.head, tableIdentifier, catalogTable, tableSink, staticPartitions)
   }
 
 }
@@ -61,8 +66,10 @@ private class FlinkLogicalSinkConverter
     val newInput = RelOptRule.convert(sink.getInput, FlinkConventions.LOGICAL)
     FlinkLogicalSink.create(
       newInput,
-      sink.sink,
-      sink.sinkName)
+      sink.tableIdentifier,
+      sink.catalogTable,
+      sink.tableSink,
+      sink.staticPartitions)
   }
 }
 
@@ -71,10 +78,13 @@ object FlinkLogicalSink {
 
   def create(
       input: RelNode,
-      sink: TableSink[_],
-      sinkName: String): FlinkLogicalSink = {
+      tableIdentifier: ObjectIdentifier,
+      catalogTable: CatalogTable,
+      tableSink: DynamicTableSink,
+      staticPartitions: Map[String, String] = Map()): FlinkLogicalSink = {
     val cluster = input.getCluster
     val traitSet = cluster.traitSetOf(FlinkConventions.LOGICAL).simplify()
-    new FlinkLogicalSink(cluster, traitSet, input, sink, sinkName)
+    new FlinkLogicalSink(
+      cluster, traitSet, input, tableIdentifier, catalogTable, tableSink, staticPartitions)
   }
 }

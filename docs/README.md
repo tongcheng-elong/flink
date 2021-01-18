@@ -21,14 +21,14 @@ packages: `rubygems ruby-dev libssl-dev build-essential`.
 # Using Dockerized Jekyll
 
 We dockerized the jekyll environment above. If you have [docker](https://docs.docker.com/),
-you can run following command to start the container.
+you can run the following command to start the container.
 
 ```
 cd flink/docs/docker
 ./run.sh
 ```
 
-It takes a few moment to build the image for the first time, but will be a second from the second time.
+It takes a few moments to build the image for the first time but will be a second from the second time.
 The run.sh command brings you in a bash session where you run the `./build_docs.sh` script mentioned above.
 
 
@@ -42,8 +42,7 @@ If you call the script with the preview flag `build_docs.sh -p`, Jekyll will
 start a web server at `localhost:4000` and watch the docs directory for
 updates. Use this mode to preview changes locally. 
 
-If you have ruby 2.0 or greater, 
-you can call the script with the incremental flag `build_docs.sh -i`.
+You can call the script with the incremental flag `build_docs.sh -i`.
 Jekyll will then serve a live preview at `localhost:4000`,
 and it will be much faster because it will only rebuild the pages corresponding
 to files that are modified. Note that if you are making changes that affect
@@ -86,7 +85,7 @@ In addition to Markdown, every page contains a Jekyll front matter, which specif
     title: "Title of the Page"
     ---
 
-Furthermore, you can access variables found in `docs/_config.yml` as follows:
+Furthermore, you can access the variables found in `docs/_config.yml` as follows:
 
     {{ site.NAME }}
 
@@ -127,14 +126,14 @@ You can exclude a heading from the table of contents:
 
 	{% top %}
 
-This will be replaced by a default back to top link. It is recommended to use these links at least at the end of each level-2 section.
+This will be replaced by a back to top link. It is recommended to use these links at least at the end of each level-2 section.
 
 #### Labels
 
 	{% info %}
 	{% warn %}
 
-These will be replaced by a info or warning label. You can change the text of the label by providing an argument:
+These will be replaced by an info or warning label. You can change the text of the label by providing an argument:
 
     {% info Recommendation %}
 

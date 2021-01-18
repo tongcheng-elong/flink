@@ -129,6 +129,9 @@ export interface NodesItemInterface {
 
 export interface NodesItemCorrectInterface extends NodesItemInterface {
   detail: VerticesItemInterface | undefined;
+  lowWatermark?: number;
+  backPressuredPercentage?: number;
+  busyPercentage?: number;
 }
 
 export interface NodesItemLinkInterface {

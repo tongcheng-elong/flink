@@ -32,96 +32,102 @@ import java.util.List;
 import static org.apache.flink.util.Preconditions.checkArgument;
 import static org.apache.flink.util.Preconditions.checkNotNull;
 
-/**
- * Partition descriptor for {@link ShuffleMaster} to obtain {@link ShuffleDescriptor}.
- */
+/** Partition descriptor for {@link ShuffleMaster} to obtain {@link ShuffleDescriptor}. */
 public class PartitionDescriptor implements Serializable {
 
-	private static final long serialVersionUID = 6343547936086963705L;
+    private static final long serialVersionUID = 6343547936086963705L;
 
-	/** The ID of the result this partition belongs to. */
-	private final IntermediateDataSetID resultId;
+    /** The ID of the result this partition belongs to. */
+    private final IntermediateDataSetID resultId;
 
-	/** The ID of the partition. */
-	private final IntermediateResultPartitionID partitionId;
+    /** The total number of partitions for the result. */
+    private final int totalNumberOfPartitions;
 
-	/** The type of the partition. */
-	private final ResultPartitionType partitionType;
+    /** The ID of the partition. */
+    private final IntermediateResultPartitionID partitionId;
 
-	/** The number of subpartitions. */
-	private final int numberOfSubpartitions;
+    /** The type of the partition. */
+    private final ResultPartitionType partitionType;
 
-	/** Connection index to identify this partition of intermediate result. */
-	private final int connectionIndex;
+    /** The number of subpartitions. */
+    private final int numberOfSubpartitions;
 
-	@VisibleForTesting
-	public PartitionDescriptor(
-			IntermediateDataSetID resultId,
-			IntermediateResultPartitionID partitionId,
-			ResultPartitionType partitionType,
-			int numberOfSubpartitions,
-			int connectionIndex) {
-		this.resultId = checkNotNull(resultId);
-		this.partitionId = checkNotNull(partitionId);
-		this.partitionType = checkNotNull(partitionType);
-		checkArgument(numberOfSubpartitions >= 1);
-		this.numberOfSubpartitions = numberOfSubpartitions;
-		this.connectionIndex = connectionIndex;
-	}
+    /** Connection index to identify this partition of intermediate result. */
+    private final int connectionIndex;
 
-	public IntermediateDataSetID getResultId() {
-		return resultId;
-	}
+    @VisibleForTesting
+    public PartitionDescriptor(
+            IntermediateDataSetID resultId,
+            int totalNumberOfPartitions,
+            IntermediateResultPartitionID partitionId,
+            ResultPartitionType partitionType,
+            int numberOfSubpartitions,
+            int connectionIndex) {
+        this.resultId = checkNotNull(resultId);
+        checkArgument(totalNumberOfPartitions >= 1);
+        this.totalNumberOfPartitions = totalNumberOfPartitions;
+        this.partitionId = checkNotNull(partitionId);
+        this.partitionType = checkNotNull(partitionType);
+        checkArgument(numberOfSubpartitions >= 1);
+        this.numberOfSubpartitions = numberOfSubpartitions;
+        this.connectionIndex = connectionIndex;
+    }
 
-	public IntermediateResultPartitionID getPartitionId() {
-		return partitionId;
-	}
+    public IntermediateDataSetID getResultId() {
+        return resultId;
+    }
 
-	public ResultPartitionType getPartitionType() {
-		return partitionType;
-	}
+    public int getTotalNumberOfPartitions() {
+        return totalNumberOfPartitions;
+    }
 
-	public int getNumberOfSubpartitions() {
-		return numberOfSubpartitions;
-	}
+    public IntermediateResultPartitionID getPartitionId() {
+        return partitionId;
+    }
 
-	int getConnectionIndex() {
-		return connectionIndex;
-	}
+    public ResultPartitionType getPartitionType() {
+        return partitionType;
+    }
 
-	@Override
-	public String toString() {
-		return String.format(
-			"PartitionDescriptor [result id: %s, partition id: %s, partition type: %s, " +
-				"subpartitions: %d, connection index: %d]",
-			resultId,
-			partitionId,
-			partitionType,
-			numberOfSubpartitions,
-			connectionIndex);
-	}
+    public int getNumberOfSubpartitions() {
+        return numberOfSubpartitions;
+    }
 
-	public static PartitionDescriptor from(IntermediateResultPartition partition) {
-		checkNotNull(partition);
+    int getConnectionIndex() {
+        return connectionIndex;
+    }
 
-		// The produced data is partitioned among a number of subpartitions.
-		//
-		// If no consumers are known at this point, we use a single subpartition, otherwise we have
-		// one for each consuming sub task.
-		int numberOfSubpartitions = 1;
-		List<List<ExecutionEdge>> consumers = partition.getConsumers();
-		if (!consumers.isEmpty() && !consumers.get(0).isEmpty()) {
-			if (consumers.size() > 1) {
-				throw new IllegalStateException("Currently, only a single consumer group per partition is supported.");
-			}
-			numberOfSubpartitions = consumers.get(0).size();
-		}
-		IntermediateResult result = partition.getIntermediateResult();
-		return new PartitionDescriptor(
-			result.getId(),
-			partition.getPartitionId(),
-			result.getResultType(),
-			numberOfSubpartitions,
-			result.getConnectionIndex());
-	}
+    @Override
+    public String toString() {
+        return String.format(
+                "PartitionDescriptor [result id: %s, partition id: %s, partition type: %s, "
+                        + "subpartitions: %d, connection index: %d]",
+                resultId, partitionId, partitionType, numberOfSubpartitions, connectionIndex);
+    }
+
+    public static PartitionDescriptor from(IntermediateResultPartition partition) {
+        checkNotNull(partition);
+
+        // The produced data is partitioned among a number of subpartitions.
+        //
+        // If no consumers are known at this point, we use a single subpartition, otherwise we have
+        // one for each consuming sub task.
+        int numberOfSubpartitions = 1;
+        List<List<ExecutionEdge>> consumers = partition.getConsumers();
+        if (!consumers.isEmpty() && !consumers.get(0).isEmpty()) {
+            if (consumers.size() > 1) {
+                throw new IllegalStateException(
+                        "Currently, only a single consumer group per partition is supported.");
+            }
+            numberOfSubpartitions = consumers.get(0).size();
+        }
+        IntermediateResult result = partition.getIntermediateResult();
+        return new PartitionDescriptor(
+                result.getId(),
+                partition.getIntermediateResult().getNumberOfAssignedPartitions(),
+                partition.getPartitionId(),
+                result.getResultType(),
+                numberOfSubpartitions,
+                result.getConnectionIndex());
+    }
 }

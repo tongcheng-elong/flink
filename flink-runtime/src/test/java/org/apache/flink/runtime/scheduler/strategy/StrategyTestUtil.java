@@ -20,19 +20,17 @@ package org.apache.flink.runtime.scheduler.strategy;
 
 import org.apache.flink.runtime.scheduler.ExecutionVertexDeploymentOption;
 
-import java.util.Collection;
+import java.util.List;
 import java.util.stream.Collectors;
 
-/**
- * Strategy test utilities.
- */
+/** Strategy test utilities. */
 public class StrategyTestUtil {
 
-	static Collection<ExecutionVertexID> getExecutionVertexIdsFromDeployOptions(
-		Collection<ExecutionVertexDeploymentOption> deploymentOptions) {
+    static List<ExecutionVertexID> getExecutionVertexIdsFromDeployOptions(
+            final List<ExecutionVertexDeploymentOption> deploymentOptions) {
 
-		return deploymentOptions.stream()
-			.map(ExecutionVertexDeploymentOption::getExecutionVertexId)
-			.collect(Collectors.toList());
-	}
+        return deploymentOptions.stream()
+                .map(ExecutionVertexDeploymentOption::getExecutionVertexId)
+                .collect(Collectors.toList());
+    }
 }

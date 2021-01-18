@@ -18,23 +18,27 @@
 
 package org.apache.flink.table.catalog;
 
-import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.table.api.TableSchema;
-import org.apache.flink.table.api.Types;
 import org.apache.flink.table.sources.StreamTableSource;
+import org.apache.flink.table.types.DataType;
+import org.apache.flink.table.utils.CatalogManagerMocks;
 import org.apache.flink.types.Row;
 
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 
 /**
- * Utility classes to construct a {@link CatalogManager} with a given structure.
- * It does create tables ({@link TestTable} which {@link Object#equals(Object)} method
- * compares the fully qualified paths.
+ * Utility classes to construct a {@link CatalogManager} with a given structure. It does create
+ * tables ({@link TestTable} which {@link Object#equals(Object)} method compares the fully qualified
+ * paths.
  *
  * <p>Example:
+ *
  * <pre>{@code
  * root()
  *  .builtin(
@@ -51,157 +55,304 @@ import java.util.Objects;
  *          table("tab1"),
  *          table("tab2")
  *      )
+ *  .temporaryTable(ObjectIdentifier.of("cat1", "default", "tab1"))
  *  ).build();
  * }</pre>
  */
 public class CatalogStructureBuilder {
 
-	public static final String BUILTIN_CATALOG_NAME = "builtin";
-	private CatalogManager catalogManager = new CatalogManager(
-		BUILTIN_CATALOG_NAME,
-		new GenericInMemoryCatalog(BUILTIN_CATALOG_NAME));
+    public static final String BUILTIN_CATALOG_NAME = "builtin";
+    private CatalogManager catalogManager =
+            CatalogManagerMocks.preparedCatalogManager()
+                    .defaultCatalog(
+                            BUILTIN_CATALOG_NAME, new GenericInMemoryCatalog(BUILTIN_CATALOG_NAME))
+                    .build();
 
-	public static CatalogStructureBuilder root() {
-		return new CatalogStructureBuilder();
-	}
+    public static CatalogStructureBuilder root() {
+        return new CatalogStructureBuilder();
+    }
 
-	public static DatabaseBuilder database(String name, TableBuilder... tables) {
-		return new DatabaseBuilder(name, tables);
-	}
+    public static DatabaseBuilder database(String name, DatabaseEntryBuilder... tables) {
+        return new DatabaseBuilder(name, tables);
+    }
 
-	public static TableBuilder table(String name) {
-		return new TableBuilder(name);
-	}
+    public static TableBuilder table(String name) {
+        return new TableBuilder(name);
+    }
 
-	public CatalogStructureBuilder builtin(DatabaseBuilder defaultDb, DatabaseBuilder... databases) throws Exception {
-		GenericInMemoryCatalog catalog = buildCatalog(BUILTIN_CATALOG_NAME, defaultDb, databases);
-		this.catalogManager = new CatalogManager(BUILTIN_CATALOG_NAME, catalog);
+    public static ViewBuilder view(String name) {
+        return new ViewBuilder(name);
+    }
 
-		return this;
-	}
+    public CatalogStructureBuilder builtin(DatabaseBuilder defaultDb, DatabaseBuilder... databases)
+            throws Exception {
+        GenericInMemoryCatalog catalog = buildCatalog(BUILTIN_CATALOG_NAME, defaultDb, databases);
+        this.catalogManager =
+                CatalogManagerMocks.preparedCatalogManager()
+                        .defaultCatalog(BUILTIN_CATALOG_NAME, catalog)
+                        .build();
 
-	public CatalogStructureBuilder catalog(
-			String name,
-			DatabaseBuilder defaultDatabase,
-			DatabaseBuilder... databases) throws Exception {
+        return this;
+    }
 
-		GenericInMemoryCatalog catalog = buildCatalog(name, defaultDatabase, databases);
-		catalogManager.registerCatalog(name, catalog);
+    public CatalogStructureBuilder temporaryTable(ObjectIdentifier path) {
+        this.catalogManager.createTemporaryTable(new TestTable(path.toString(), true), path, false);
+        return this;
+    }
 
-		return this;
-	}
+    public CatalogStructureBuilder temporaryView(ObjectIdentifier path, String query) {
+        this.catalogManager.createTemporaryTable(
+                new TestView(
+                        query,
+                        query,
+                        TableSchema.builder().build(),
+                        Collections.emptyMap(),
+                        "",
+                        true,
+                        path.toString()),
+                path,
+                false);
+        return this;
+    }
 
-	private GenericInMemoryCatalog buildCatalog(
-			String name,
-			DatabaseBuilder defaultDatabase,
-			DatabaseBuilder[] databases) throws Exception {
-		GenericInMemoryCatalog catalog = new GenericInMemoryCatalog(
-			name,
-			defaultDatabase.getName());
-		defaultDatabase.build(catalog, name);
-		registerDatabases(name, catalog, databases);
-		return catalog;
-	}
+    public CatalogStructureBuilder catalog(
+            String name, DatabaseBuilder defaultDatabase, DatabaseBuilder... databases)
+            throws Exception {
+        GenericInMemoryCatalog catalog = buildCatalog(name, defaultDatabase, databases);
+        catalogManager.registerCatalog(name, catalog);
 
-	private void registerDatabases(
-			String name,
-			Catalog catalog,
-			DatabaseBuilder[] databases) throws Exception {
-		for (DatabaseBuilder database : databases) {
-			catalog.createDatabase(database.getName(), new CatalogDatabaseImpl(new HashMap<>(), ""), false);
-			database.build(catalog, name);
-		}
-	}
+        return this;
+    }
 
-	public CatalogManager build() {
-		return catalogManager;
-	}
+    private GenericInMemoryCatalog buildCatalog(
+            String name, DatabaseBuilder defaultDatabase, DatabaseBuilder[] databases)
+            throws Exception {
+        GenericInMemoryCatalog catalog =
+                new GenericInMemoryCatalog(name, defaultDatabase.getName());
+        defaultDatabase.build(catalog, name);
+        registerDatabases(name, catalog, databases);
+        return catalog;
+    }
 
-	/**
-	 * Helper class for creating mock {@link CatalogDatabase} in a {@link CatalogStructureBuilder}.
-	 */
-	public static class DatabaseBuilder {
-		private final TableBuilder[] tables;
-		private final String name;
+    private void registerDatabases(String name, Catalog catalog, DatabaseBuilder[] databases)
+            throws Exception {
+        for (DatabaseBuilder database : databases) {
+            catalog.createDatabase(
+                    database.getName(), new CatalogDatabaseImpl(new HashMap<>(), ""), false);
+            database.build(catalog, name);
+        }
+    }
 
-		public DatabaseBuilder(String name, TableBuilder[] tables) {
-			this.tables = tables;
-			this.name = name;
-		}
+    public CatalogManager build() {
+        return catalogManager;
+    }
 
-		public String getName() {
-			return name;
-		}
+    /**
+     * Helper class for creating mock {@link CatalogDatabase} in a {@link CatalogStructureBuilder}.
+     */
+    public static class DatabaseBuilder {
+        private final DatabaseEntryBuilder[] tables;
+        private final String name;
 
-		public void build(Catalog catalog, String catalogName) throws Exception {
-			for (TableBuilder tableBuilder : tables) {
-				catalog.createTable(
-					new ObjectPath(name, tableBuilder.getName()),
-					tableBuilder.build(catalogName + "." + name),
-					false);
-			}
-		}
-	}
+        public DatabaseBuilder(String name, DatabaseEntryBuilder[] tables) {
+            this.tables = tables;
+            this.name = name;
+        }
 
-	/**
-	 * Helper class for creating mock {@link CatalogTable} in a {@link CatalogStructureBuilder}.
-	 */
-	public static class TableBuilder {
-		private final String name;
+        public String getName() {
+            return name;
+        }
 
-		TableBuilder(String name) {
-			this.name = name;
-		}
+        public void build(Catalog catalog, String catalogName) throws Exception {
+            for (DatabaseEntryBuilder tableBuilder : tables) {
+                catalog.createTable(
+                        new ObjectPath(name, tableBuilder.getName()),
+                        tableBuilder.build(catalogName + "." + name),
+                        false);
+            }
+        }
+    }
 
-		public String getName() {
-			return name;
-		}
+    /** Common interface for both {@link TableBuilder} & {@link ViewBuilder}. */
+    public interface DatabaseEntryBuilder {
+        String getName();
 
-		public TestTable build(String path) {
-			return new TestTable(path + "." + name);
-		}
-	}
+        DatabaseEntryBuilder withTableSchema(TableSchema tableSchema);
 
-	private static class TestTable extends ConnectorCatalogTable<Row, Row> {
-		private final String fullyQualifiedPath;
+        CatalogBaseTable build(String path);
+    }
 
-		private static final StreamTableSource<Row> tableSource = new StreamTableSource<Row>() {
-			@Override
-			public DataStream<Row> getDataStream(StreamExecutionEnvironment execEnv) {
-				return null;
-			}
+    /** Helper class for creating mock {@link CatalogTable} in a {@link CatalogStructureBuilder}. */
+    public static class TableBuilder implements DatabaseEntryBuilder {
+        private final String name;
+        private TableSchema tableSchema = TableSchema.builder().build();
 
-			@Override
-			public TypeInformation<Row> getReturnType() {
-				return Types.ROW();
-			}
+        TableBuilder(String name) {
+            this.name = name;
+        }
 
-			@Override
-			public TableSchema getTableSchema() {
-				return TableSchema.builder().build();
-			}
-		};
+        public String getName() {
+            return name;
+        }
 
-		private TestTable(String fullyQualifiedPath) {
-			super(tableSource, null, tableSource.getTableSchema(), false);
-			this.fullyQualifiedPath = fullyQualifiedPath;
-		}
+        @Override
+        public TableBuilder withTableSchema(TableSchema tableSchema) {
+            this.tableSchema = Objects.requireNonNull(tableSchema);
+            return this;
+        }
 
-		@Override
-		public boolean equals(Object o) {
-			if (this == o) {
-				return true;
-			}
-			if (o == null || getClass() != o.getClass()) {
-				return false;
-			}
-			TestTable testTable = (TestTable) o;
-			return Objects.equals(fullyQualifiedPath, testTable.fullyQualifiedPath);
-		}
+        public TestTable build(String path) {
+            return new TestTable(path + "." + name, tableSchema, false);
+        }
+    }
 
-		@Override
-		public int hashCode() {
-			return Objects.hash(fullyQualifiedPath);
-		}
-	}
+    /** Helper class for creating mock {@link CatalogView} in a {@link CatalogStructureBuilder}. */
+    public static class ViewBuilder implements DatabaseEntryBuilder {
+        private final String name;
+        private TableSchema tableSchema = TableSchema.builder().build();
+        private String query;
+
+        ViewBuilder(String name) {
+            this.name = name;
+        }
+
+        public String getName() {
+            return name;
+        }
+
+        public ViewBuilder withQuery(String query) {
+            this.query = query;
+            return this;
+        }
+
+        @Override
+        public ViewBuilder withTableSchema(TableSchema tableSchema) {
+            this.tableSchema = Objects.requireNonNull(tableSchema);
+            return this;
+        }
+
+        public TestView build(String path) {
+            return new TestView(
+                    query, query, tableSchema, Collections.emptyMap(), "", true, path + "." + name);
+        }
+    }
+
+    /** A test {@link CatalogTable}. */
+    public static class TestTable extends ConnectorCatalogTable<Row, Row> {
+        private final String fullyQualifiedPath;
+        private final boolean isTemporary;
+
+        public boolean isTemporary() {
+            return isTemporary;
+        }
+
+        private TestTable(String fullyQualifiedPath, TableSchema tableSchema, boolean isTemporary) {
+            super(
+                    new StreamTableSource<Row>() {
+                        @Override
+                        public DataStream<Row> getDataStream(StreamExecutionEnvironment execEnv) {
+                            return null;
+                        }
+
+                        @Override
+                        public DataType getProducedDataType() {
+                            return tableSchema.toRowDataType();
+                        }
+
+                        @Override
+                        public TableSchema getTableSchema() {
+                            throw new UnsupportedOperationException("Should not be called");
+                        }
+
+                        @Override
+                        public String explainSource() {
+                            return String.format("isTemporary=[%s]", isTemporary);
+                        }
+                    },
+                    null,
+                    tableSchema,
+                    false);
+
+            this.fullyQualifiedPath = fullyQualifiedPath;
+            this.isTemporary = isTemporary;
+        }
+
+        private TestTable(String fullyQualifiedPath, boolean isTemporary) {
+            this(fullyQualifiedPath, TableSchema.builder().build(), isTemporary);
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) {
+                return true;
+            }
+            if (o == null || getClass() != o.getClass()) {
+                return false;
+            }
+            TestTable testTable = (TestTable) o;
+            return Objects.equals(fullyQualifiedPath, testTable.fullyQualifiedPath)
+                    && Objects.equals(isTemporary, testTable.isTemporary);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(fullyQualifiedPath, isTemporary);
+        }
+    }
+
+    /** A test {@link CatalogView}. */
+    public static class TestView extends AbstractCatalogView {
+        private final boolean isTemporary;
+        private final String fullyQualifiedPath;
+
+        public boolean isTemporary() {
+            return isTemporary;
+        }
+
+        private TestView(
+                String originalQuery,
+                String expandedQuery,
+                TableSchema schema,
+                Map<String, String> properties,
+                String comment,
+                boolean isTemporary,
+                String fullyQualifiedPath) {
+            super(originalQuery, expandedQuery, schema, properties, comment);
+            this.isTemporary = isTemporary;
+            this.fullyQualifiedPath = fullyQualifiedPath;
+        }
+
+        @Override
+        public CatalogBaseTable copy() {
+            return this;
+        }
+
+        @Override
+        public Optional<String> getDescription() {
+            return Optional.empty();
+        }
+
+        @Override
+        public Optional<String> getDetailedDescription() {
+            return Optional.empty();
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) {
+                return true;
+            }
+            if (o == null || getClass() != o.getClass()) {
+                return false;
+            }
+            TestView testView = (TestView) o;
+            return isTemporary == testView.isTemporary
+                    && Objects.equals(fullyQualifiedPath, testView.fullyQualifiedPath);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(isTemporary, fullyQualifiedPath);
+        }
+    }
 }

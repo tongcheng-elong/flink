@@ -19,7 +19,8 @@
 package org.apache.flink.table.sources;
 
 import org.apache.flink.annotation.Experimental;
-import org.apache.flink.table.sinks.TableSink;
+import org.apache.flink.table.connector.source.DynamicTableSource;
+import org.apache.flink.table.connector.source.abilities.SupportsPartitionPushDown;
 
 import java.util.List;
 import java.util.Map;
@@ -27,42 +28,34 @@ import java.util.Map;
 /**
  * An interface for partitionable {@link TableSource}.
  *
- * <p>A {@link PartitionableTableSource} can exclude partitions from reading, which
- * includes skipping the metadata. This is especially useful when there are thousands
- * of partitions in a table.
+ * <p>A {@link PartitionableTableSource} can exclude partitions from reading, which includes
+ * skipping the metadata. This is especially useful when there are thousands of partitions in a
+ * table.
  *
- * <p>A partition is represented as a {@code Map<String, String>} which maps from partition
- * field name to partition value. Since the map is NOT ordered, the correct order of partition
- * fields should be obtained via {@link #getPartitionFieldNames()}.
+ * <p>A partition is represented as a {@code Map<String, String>} which maps from partition field
+ * name to partition value. Since the map is NOT ordered, the correct order of partition fields
+ * should be obtained via partition keys of catalog table.
+ *
+ * @deprecated This interface will not be supported in the new source design around {@link
+ *     DynamicTableSource} which only works with the Blink planner. Use {@link
+ *     SupportsPartitionPushDown} instead. See FLIP-95 for more information.
  */
+@Deprecated
 @Experimental
 public interface PartitionableTableSource {
 
-	/**
-	 * Returns all the partitions of this {@link PartitionableTableSource}.
-	 */
-	List<Map<String, String>> getPartitions();
+    /** Returns all the partitions of this {@link PartitionableTableSource}. */
+    List<Map<String, String>> getPartitions();
 
-	/**
-	 * Gets the partition field names of the table. The partition field names should be sorted in
-	 * a strict order, i.e. they have the order as specified in the PARTITION statement in DDL.
-	 * This should be an empty set if the table is not partitioned.
-	 *
-	 * <p>All the partition fields should exist in the {@link TableSink#getTableSchema()}.
-	 *
-	 * @return partition field names of the table, empty if the table is not partitioned.
-	 */
-	List<String> getPartitionFieldNames();
-
-	/**
-	 * Applies the remaining partitions to the table source. The {@code remainingPartitions} is
-	 * the remaining partitions of {@link #getPartitions()} after partition pruning applied.
-	 *
-	 * <p>After trying to apply partition pruning, we should return a new {@link TableSource}
-	 * instance which holds all pruned-partitions.
-	 *
-	 * @param remainingPartitions Remaining partitions after partition pruning applied.
-	 * @return A new cloned instance of {@link TableSource} holds all pruned-partitions.
-	 */
-	TableSource applyPartitionPruning(List<Map<String, String>> remainingPartitions);
+    /**
+     * Applies the remaining partitions to the table source. The {@code remainingPartitions} is the
+     * remaining partitions of {@link #getPartitions()} after partition pruning applied.
+     *
+     * <p>After trying to apply partition pruning, we should return a new {@link TableSource}
+     * instance which holds all pruned-partitions.
+     *
+     * @param remainingPartitions Remaining partitions after partition pruning applied.
+     * @return A new cloned instance of {@link TableSource} holds all pruned-partitions.
+     */
+    TableSource applyPartitionPruning(List<Map<String, String>> remainingPartitions);
 }

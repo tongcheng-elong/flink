@@ -20,7 +20,6 @@ package org.apache.flink.core.memory;
 
 import org.junit.Test;
 
-import java.nio.ByteBuffer;
 import java.util.Random;
 
 import static org.junit.Assert.assertEquals;
@@ -31,140 +30,150 @@ import static org.junit.Assert.assertEquals;
  */
 public class EndiannessAccessChecks {
 
-	@Test
-	public void testHeapSegment() {
-		testBigAndLittleEndianAccessUnaligned(new HeapMemorySegment(new byte[11111]));
-	}
+    @Test
+    public void testHeapSegment() {
+        testBigAndLittleEndianAccessUnaligned(new HeapMemorySegment(new byte[11111]));
+    }
 
-	@Test
-	public void testHybridOnHeapSegment() {
-		testBigAndLittleEndianAccessUnaligned(new HybridMemorySegment(new byte[11111]));
-	}
+    @Test
+    public void testHybridOnHeapSegment() {
+        testBigAndLittleEndianAccessUnaligned(MemorySegmentFactory.wrap(new byte[11111]));
+    }
 
-	@Test
-	public void testHybridOffHeapSegment() {
-		testBigAndLittleEndianAccessUnaligned(new HybridMemorySegment(ByteBuffer.allocateDirect(11111)));
-	}
+    @Test
+    public void testHybridOffHeapSegment() {
+        testBigAndLittleEndianAccessUnaligned(
+                MemorySegmentFactory.allocateUnpooledOffHeapMemory(11111));
+    }
 
-	private void testBigAndLittleEndianAccessUnaligned(MemorySegment segment) {
-		final Random rnd = new Random();
+    @Test
+    public void testHybridOffHeapUnsafeSegment() {
+        testBigAndLittleEndianAccessUnaligned(
+                MemorySegmentFactory.allocateOffHeapUnsafeMemory(11111));
+    }
 
-		// longs
-		{
-			final long seed = rnd.nextLong();
+    private void testBigAndLittleEndianAccessUnaligned(MemorySegment segment) {
+        final Random rnd = new Random();
 
-			rnd.setSeed(seed);
-			for (int i = 0; i < 10000; i++) {
-				long val = rnd.nextLong();
-				int pos = rnd.nextInt(segment.size - 7);
+        // longs
+        {
+            final long seed = rnd.nextLong();
 
-				segment.putLongLittleEndian(pos, val);
-				long r = segment.getLongBigEndian(pos);
-				assertEquals(val, Long.reverseBytes(r));
+            rnd.setSeed(seed);
+            for (int i = 0; i < 10000; i++) {
+                long val = rnd.nextLong();
+                int pos = rnd.nextInt(segment.size - 7);
 
-				segment.putLongBigEndian(pos, val);
-				r = segment.getLongLittleEndian(pos);
-				assertEquals(val, Long.reverseBytes(r));
-			}
-		}
+                segment.putLongLittleEndian(pos, val);
+                long r = segment.getLongBigEndian(pos);
+                assertEquals(val, Long.reverseBytes(r));
 
-		// ints
-		{
-			final long seed = rnd.nextLong();
+                segment.putLongBigEndian(pos, val);
+                r = segment.getLongLittleEndian(pos);
+                assertEquals(val, Long.reverseBytes(r));
+            }
+        }
 
-			rnd.setSeed(seed);
-			for (int i = 0; i < 10000; i++) {
-				int val = rnd.nextInt();
-				int pos = rnd.nextInt(segment.size - 3);
+        // ints
+        {
+            final long seed = rnd.nextLong();
 
-				segment.putIntLittleEndian(pos, val);
-				int r = segment.getIntBigEndian(pos);
-				assertEquals(val, Integer.reverseBytes(r));
+            rnd.setSeed(seed);
+            for (int i = 0; i < 10000; i++) {
+                int val = rnd.nextInt();
+                int pos = rnd.nextInt(segment.size - 3);
 
-				segment.putIntBigEndian(pos, val);
-				r = segment.getIntLittleEndian(pos);
-				assertEquals(val, Integer.reverseBytes(r));
-			}
-		}
+                segment.putIntLittleEndian(pos, val);
+                int r = segment.getIntBigEndian(pos);
+                assertEquals(val, Integer.reverseBytes(r));
 
-		// shorts
-		{
-			final long seed = rnd.nextLong();
+                segment.putIntBigEndian(pos, val);
+                r = segment.getIntLittleEndian(pos);
+                assertEquals(val, Integer.reverseBytes(r));
+            }
+        }
 
-			rnd.setSeed(seed);
-			for (int i = 0; i < 10000; i++) {
-				short val = (short) rnd.nextInt();
-				int pos = rnd.nextInt(segment.size - 1);
+        // shorts
+        {
+            final long seed = rnd.nextLong();
 
-				segment.putShortLittleEndian(pos, val);
-				short r = segment.getShortBigEndian(pos);
-				assertEquals(val, Short.reverseBytes(r));
+            rnd.setSeed(seed);
+            for (int i = 0; i < 10000; i++) {
+                short val = (short) rnd.nextInt();
+                int pos = rnd.nextInt(segment.size - 1);
 
-				segment.putShortBigEndian(pos, val);
-				r = segment.getShortLittleEndian(pos);
-				assertEquals(val, Short.reverseBytes(r));
-			}
-		}
+                segment.putShortLittleEndian(pos, val);
+                short r = segment.getShortBigEndian(pos);
+                assertEquals(val, Short.reverseBytes(r));
 
-		// chars
-		{
-			final long seed = rnd.nextLong();
+                segment.putShortBigEndian(pos, val);
+                r = segment.getShortLittleEndian(pos);
+                assertEquals(val, Short.reverseBytes(r));
+            }
+        }
 
-			rnd.setSeed(seed);
-			for (int i = 0; i < 10000; i++) {
-				char val = (char) rnd.nextInt();
-				int pos = rnd.nextInt(segment.size - 1);
+        // chars
+        {
+            final long seed = rnd.nextLong();
 
-				segment.putCharLittleEndian(pos, val);
-				char r = segment.getCharBigEndian(pos);
-				assertEquals(val, Character.reverseBytes(r));
+            rnd.setSeed(seed);
+            for (int i = 0; i < 10000; i++) {
+                char val = (char) rnd.nextInt();
+                int pos = rnd.nextInt(segment.size - 1);
 
-				segment.putCharBigEndian(pos, val);
-				r = segment.getCharLittleEndian(pos);
-				assertEquals(val, Character.reverseBytes(r));
-			}
-		}
+                segment.putCharLittleEndian(pos, val);
+                char r = segment.getCharBigEndian(pos);
+                assertEquals(val, Character.reverseBytes(r));
 
-		// floats
-		{
-			final long seed = rnd.nextLong();
+                segment.putCharBigEndian(pos, val);
+                r = segment.getCharLittleEndian(pos);
+                assertEquals(val, Character.reverseBytes(r));
+            }
+        }
 
-			rnd.setSeed(seed);
-			for (int i = 0; i < 10000; i++) {
-				float val = rnd.nextFloat();
-				int pos = rnd.nextInt(segment.size - 3);
+        // floats
+        {
+            final long seed = rnd.nextLong();
 
-				segment.putFloatLittleEndian(pos, val);
-				float r = segment.getFloatBigEndian(pos);
-				float reversed = Float.intBitsToFloat(Integer.reverseBytes(Float.floatToRawIntBits(r)));
-				assertEquals(val, reversed, 0.0f);
+            rnd.setSeed(seed);
+            for (int i = 0; i < 10000; i++) {
+                float val = rnd.nextFloat();
+                int pos = rnd.nextInt(segment.size - 3);
 
-				segment.putFloatBigEndian(pos, val);
-				r = segment.getFloatLittleEndian(pos);
-				reversed = Float.intBitsToFloat(Integer.reverseBytes(Float.floatToRawIntBits(r)));
-				assertEquals(val, reversed, 0.0f);
-			}
-		}
+                segment.putFloatLittleEndian(pos, val);
+                float r = segment.getFloatBigEndian(pos);
+                float reversed =
+                        Float.intBitsToFloat(Integer.reverseBytes(Float.floatToRawIntBits(r)));
+                assertEquals(val, reversed, 0.0f);
 
-		// doubles
-		{
-			final long seed = rnd.nextLong();
+                segment.putFloatBigEndian(pos, val);
+                r = segment.getFloatLittleEndian(pos);
+                reversed = Float.intBitsToFloat(Integer.reverseBytes(Float.floatToRawIntBits(r)));
+                assertEquals(val, reversed, 0.0f);
+            }
+        }
 
-			rnd.setSeed(seed);
-			for (int i = 0; i < 10000; i++) {
-				double val = rnd.nextDouble();
-				int pos = rnd.nextInt(segment.size - 7);
+        // doubles
+        {
+            final long seed = rnd.nextLong();
 
-				segment.putDoubleLittleEndian(pos, val);
-				double r = segment.getDoubleBigEndian(pos);
-				double reversed = Double.longBitsToDouble(Long.reverseBytes(Double.doubleToRawLongBits(r)));
-				assertEquals(val, reversed, 0.0f);
+            rnd.setSeed(seed);
+            for (int i = 0; i < 10000; i++) {
+                double val = rnd.nextDouble();
+                int pos = rnd.nextInt(segment.size - 7);
 
-				segment.putDoubleBigEndian(pos, val);
-				r = segment.getDoubleLittleEndian(pos);
-				reversed = Double.longBitsToDouble(Long.reverseBytes(Double.doubleToRawLongBits(r)));
-				assertEquals(val, reversed, 0.0f);
-			}
-		}
-	}
+                segment.putDoubleLittleEndian(pos, val);
+                double r = segment.getDoubleBigEndian(pos);
+                double reversed =
+                        Double.longBitsToDouble(Long.reverseBytes(Double.doubleToRawLongBits(r)));
+                assertEquals(val, reversed, 0.0f);
+
+                segment.putDoubleBigEndian(pos, val);
+                r = segment.getDoubleLittleEndian(pos);
+                reversed =
+                        Double.longBitsToDouble(Long.reverseBytes(Double.doubleToRawLongBits(r)));
+                assertEquals(val, reversed, 0.0f);
+            }
+        }
+    }
 }

@@ -19,7 +19,7 @@
 package org.apache.flink.table.descriptors;
 
 import org.apache.flink.annotation.PublicEvolving;
-import org.apache.flink.table.api.TableEnvironment;
+import org.apache.flink.table.api.internal.Registration;
 
 /**
  * Describes a table connected from a batch environment.
@@ -30,12 +30,13 @@ import org.apache.flink.table.api.TableEnvironment;
 @PublicEvolving
 public final class BatchTableDescriptor extends ConnectTableDescriptor {
 
-	public BatchTableDescriptor(TableEnvironment tableEnv, ConnectorDescriptor connectorDescriptor) {
-		super(tableEnv, connectorDescriptor);
-	}
+    public BatchTableDescriptor(
+            Registration registration, ConnectorDescriptor connectorDescriptor) {
+        super(registration, connectorDescriptor);
+    }
 
-	@Override
-	public BatchTableDescriptor withSchema(Schema schema) {
-		return (BatchTableDescriptor) super.withSchema(schema);
-	}
+    @Override
+    public BatchTableDescriptor withSchema(Schema schema) {
+        return (BatchTableDescriptor) super.withSchema(schema);
+    }
 }

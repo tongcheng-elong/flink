@@ -19,7 +19,7 @@
 package org.apache.flink.table.descriptors;
 
 import org.apache.flink.annotation.PublicEvolving;
-import org.apache.flink.table.api.TableEnvironment;
+import org.apache.flink.table.api.internal.Registration;
 
 /**
  * Describes a table connected from a streaming environment.
@@ -30,12 +30,13 @@ import org.apache.flink.table.api.TableEnvironment;
 @PublicEvolving
 public final class StreamTableDescriptor extends ConnectTableDescriptor {
 
-	public StreamTableDescriptor(TableEnvironment tableEnv, ConnectorDescriptor connectorDescriptor) {
-		super(tableEnv, connectorDescriptor);
-	}
+    public StreamTableDescriptor(
+            Registration registration, ConnectorDescriptor connectorDescriptor) {
+        super(registration, connectorDescriptor);
+    }
 
-	@Override
-	public StreamTableDescriptor withSchema(Schema schema) {
-		return (StreamTableDescriptor) super.withSchema(schema);
-	}
+    @Override
+    public StreamTableDescriptor withSchema(Schema schema) {
+        return (StreamTableDescriptor) super.withSchema(schema);
+    }
 }

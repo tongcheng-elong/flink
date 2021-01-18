@@ -75,6 +75,16 @@ have skipped Java 9 support.
 Related issues:
 - [FLINK-8033: JDK 9 support](https://issues.apache.org/jira/browse/FLINK-8033)
 
+### Memory management
+
+In Fink 1.9.0 and prior version, the managed memory fraction of taskmanager is controlled by `taskmanager.memory.fraction`,
+and with 0.7 as the default value. However, sometimes this will cause OOMs due to the fact that the default value of JVM
+parameter `NewRatio` is 2, which means the old generation occupied only 2/3 (0.66) of the heap memory. So if you run into
+this case, please manually change this value to a lower value.
+
+Related issues:
+- [FLINK-14123: Lower the default value of taskmanager.memory.fraction](https://issues.apache.org/jira/browse/FLINK-14123)
+
 ## Deprecations and breaking changes
 
 ### Scala expression DSL for Table API moved to `flink-table-api-scala`
@@ -158,7 +168,7 @@ memory segments. The default timeout is 30 seconds, and is configurable via `tas
 It is possible that for some previously working deployments this default timeout value is too low
 and might have to be increased.
 
-Please also notice that several network I/O metrics have had their scope changed. See the [1.9 metrics documentation](https://ci.apache.org/projects/flink/flink-docs-master/monitoring/metrics.html)
+Please also notice that several network I/O metrics have had their scope changed. See the [1.9 metrics documentation](https://ci.apache.org/projects/flink/flink-docs-master/ops/metrics.html)
 for which metrics are affected. In 1.9.0, these metrics will still be available under their previous scopes, but this
 may no longer be the case in future versions.
 

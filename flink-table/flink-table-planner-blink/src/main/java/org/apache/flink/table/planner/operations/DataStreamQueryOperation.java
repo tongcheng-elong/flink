@@ -21,6 +21,7 @@ package org.apache.flink.table.planner.operations;
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.table.api.TableSchema;
+import org.apache.flink.table.catalog.ObjectIdentifier;
 import org.apache.flink.table.operations.Operation;
 import org.apache.flink.table.operations.OperationUtils;
 import org.apache.flink.table.operations.QueryOperation;
@@ -37,108 +38,83 @@ import java.util.Map;
  *
  * <p>This is only used for testing.
  *
- * <p>This operation may expose only part, or change the order of the fields available in a
- * {@link org.apache.flink.api.common.typeutils.CompositeType} of the underlying {@link DataStream}.
- * The {@link DataStreamQueryOperation#getFieldIndices()} describes the mapping between fields of the
+ * <p>This operation may expose only part, or change the order of the fields available in a {@link
+ * org.apache.flink.api.common.typeutils.CompositeType} of the underlying {@link DataStream}. The
+ * {@link DataStreamQueryOperation#getFieldIndices()} describes the mapping between fields of the
  * {@link TableSchema} to the {@link org.apache.flink.api.common.typeutils.CompositeType}.
  */
 @Internal
 public class DataStreamQueryOperation<E> implements QueryOperation {
 
-	// DataStreamQueryOperation represent a registered DataStream from `registerDataStream` method
-	// or a unregistered DataStream from `fromDataStream`. However the name under which the DataStream is registered
-	// is missing when converting a DataStreamQueryOperation to a RelNode.
-	// so using `qualifiedName` to keep the original name.
-	// TODO This is a temporary solution.
-	private List<String> qualifiedName;
-	private final DataStream<E> dataStream;
-	private final int[] fieldIndices;
-	private final TableSchema tableSchema;
-	// TODO remove this while TableSchema supports fieldNullables
-	private final boolean[] fieldNullables;
-	private final boolean producesUpdates;
-	private final boolean isAccRetract;
-	private final FlinkStatistic statistic;
+    private final ObjectIdentifier identifier;
+    private final DataStream<E> dataStream;
+    private final int[] fieldIndices;
+    private final TableSchema tableSchema;
+    // TODO remove this while TableSchema supports fieldNullables
+    private final boolean[] fieldNullables;
+    private final FlinkStatistic statistic;
 
-	public DataStreamQueryOperation(
-			DataStream<E> dataStream,
-			int[] fieldIndices,
-			TableSchema tableSchema,
-			boolean[] fieldNullables,
-			boolean producesUpdates,
-			boolean isAccRetract,
-			FlinkStatistic statistic) {
-		this.dataStream = dataStream;
-		this.tableSchema = tableSchema;
-		this.fieldNullables = fieldNullables;
-		this.fieldIndices = fieldIndices;
-		this.producesUpdates = producesUpdates;
-		this.isAccRetract = isAccRetract;
-		this.statistic = statistic;
-	}
+    public DataStreamQueryOperation(
+            ObjectIdentifier identifier,
+            DataStream<E> dataStream,
+            int[] fieldIndices,
+            TableSchema tableSchema,
+            boolean[] fieldNullables,
+            FlinkStatistic statistic) {
+        this.identifier = identifier;
+        this.dataStream = dataStream;
+        this.tableSchema = tableSchema;
+        this.fieldNullables = fieldNullables;
+        this.fieldIndices = fieldIndices;
+        this.statistic = statistic;
+    }
 
-	public DataStreamQueryOperation(
-			DataStream<E> dataStream,
-			int[] fieldIndices,
-			TableSchema tableSchema,
-			boolean[] fieldNullables,
-			FlinkStatistic statistic) {
-		this(dataStream, fieldIndices, tableSchema, fieldNullables, false, false, statistic);
-	}
+    public DataStream<E> getDataStream() {
+        return dataStream;
+    }
 
-	public DataStream<E> getDataStream() {
-		return dataStream;
-	}
+    public int[] getFieldIndices() {
+        return fieldIndices;
+    }
 
-	public int[] getFieldIndices() {
-		return fieldIndices;
-	}
+    @Override
+    public TableSchema getTableSchema() {
+        return tableSchema;
+    }
 
-	@Override
-	public TableSchema getTableSchema() {
-		return tableSchema;
-	}
+    @Override
+    public String asSummaryString() {
+        Map<String, Object> args = new LinkedHashMap<>();
+        if (identifier != null) {
+            args.put("id", identifier.asSummaryString());
+        } else {
+            args.put("id", dataStream.getId());
+        }
+        args.put("fields", tableSchema.getFieldNames());
 
-	@Override
-	public String asSummaryString() {
-		Map<String, Object> args = new LinkedHashMap<>();
-		args.put("id", dataStream.getId());
-		args.put("fields", tableSchema.getFieldNames());
+        return OperationUtils.formatWithChildren(
+                "DataStream", args, getChildren(), Operation::asSummaryString);
+    }
 
-		return OperationUtils.formatWithChildren("DataStream", args, getChildren(), Operation::asSummaryString);
-	}
+    @Override
+    public List<QueryOperation> getChildren() {
+        return Collections.emptyList();
+    }
 
-	@Override
-	public List<QueryOperation> getChildren() {
-		return Collections.emptyList();
-	}
+    @Override
+    public <T> T accept(QueryOperationVisitor<T> visitor) {
+        return visitor.visit(this);
+    }
 
-	@Override
-	public <T> T accept(QueryOperationVisitor<T> visitor) {
-		return visitor.visit(this);
-	}
+    public ObjectIdentifier getIdentifier() {
+        return identifier;
+    }
 
-	public List<String> getQualifiedName() {
-		return qualifiedName;
-	}
+    public boolean[] getFieldNullables() {
+        return fieldNullables;
+    }
 
-	public void setQualifiedName(List<String> qualifiedName) {
-		this.qualifiedName = qualifiedName;
-	}
-
-	public boolean[] getFieldNullables() {
-		return fieldNullables;
-	}
-
-	public boolean isProducesUpdates() {
-		return producesUpdates;
-	}
-
-	public boolean isAccRetract() {
-		return isAccRetract;
-	}
-
-	public FlinkStatistic getStatistic() {
-		return statistic;
-	}
+    public FlinkStatistic getStatistic() {
+        return statistic;
+    }
 }

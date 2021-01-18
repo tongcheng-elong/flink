@@ -38,6 +38,9 @@ import javax.annotation.Nullable;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.OutputStream;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -46,258 +49,380 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 
-/**
- * Utilities for the {@link StreamingFileSink} tests.
- */
+import static org.apache.flink.streaming.api.functions.sink.filesystem.rollingpolicies.OnCheckpointRollingPolicy.build;
+
+/** Utilities for the {@link StreamingFileSink} tests. */
 public class TestUtils {
 
-	static final int MAX_PARALLELISM = 10;
+    static final int MAX_PARALLELISM = 10;
 
-	static OneInputStreamOperatorTestHarness<Tuple2<String, Integer>, Object> createRescalingTestSink(
-			File outDir,
-			int totalParallelism,
-			int taskIdx,
-			long inactivityInterval,
-			long partMaxSize) throws Exception {
+    static OneInputStreamOperatorTestHarness<Tuple2<String, Integer>, Object>
+            createRescalingTestSink(
+                    File outDir,
+                    int totalParallelism,
+                    int taskIdx,
+                    long inactivityInterval,
+                    long partMaxSize)
+                    throws Exception {
 
-		final RollingPolicy<Tuple2<String, Integer>, String> rollingPolicy =
-				DefaultRollingPolicy
-						.create()
-						.withMaxPartSize(partMaxSize)
-						.withRolloverInterval(inactivityInterval)
-						.withInactivityInterval(inactivityInterval)
-						.build();
+        final RollingPolicy<Tuple2<String, Integer>, String> rollingPolicy =
+                DefaultRollingPolicy.builder()
+                        .withMaxPartSize(partMaxSize)
+                        .withRolloverInterval(inactivityInterval)
+                        .withInactivityInterval(inactivityInterval)
+                        .build();
 
-		final BucketAssigner<Tuple2<String, Integer>, String> bucketer = new TupleToStringBucketer();
+        return createRescalingTestSink(
+                outDir,
+                totalParallelism,
+                taskIdx,
+                10L,
+                new TupleToStringBucketer(),
+                new Tuple2Encoder(),
+                rollingPolicy,
+                new DefaultBucketFactoryImpl<>());
+    }
 
-		final Encoder<Tuple2<String, Integer>> encoder = (element, stream) -> {
-			stream.write((element.f0 + '@' + element.f1).getBytes(StandardCharsets.UTF_8));
-			stream.write('\n');
-		};
+    static OneInputStreamOperatorTestHarness<Tuple2<String, Integer>, Object>
+            createRescalingTestSink(
+                    final File outDir,
+                    final int totalParallelism,
+                    final int taskIdx,
+                    final long bucketCheckInterval,
+                    final BucketAssigner<Tuple2<String, Integer>, String> bucketer,
+                    final Encoder<Tuple2<String, Integer>> writer,
+                    final RollingPolicy<Tuple2<String, Integer>, String> rollingPolicy,
+                    final BucketFactory<Tuple2<String, Integer>, String> bucketFactory)
+                    throws Exception {
 
-		return createCustomRescalingTestSink(
-				outDir,
-				totalParallelism,
-				taskIdx,
-				10L,
-				bucketer,
-				encoder,
-				rollingPolicy,
-				new DefaultBucketFactoryImpl<>());
-	}
+        StreamingFileSink<Tuple2<String, Integer>> sink =
+                StreamingFileSink.forRowFormat(new Path(outDir.toURI()), writer)
+                        .withBucketAssigner(bucketer)
+                        .withRollingPolicy(rollingPolicy)
+                        .withBucketCheckInterval(bucketCheckInterval)
+                        .withBucketFactory(bucketFactory)
+                        .build();
 
-	static OneInputStreamOperatorTestHarness<Tuple2<String, Integer>, Object> createCustomRescalingTestSink(
-			final File outDir,
-			final int totalParallelism,
-			final int taskIdx,
-			final long bucketCheckInterval,
-			final BucketAssigner<Tuple2<String, Integer>, String> bucketer,
-			final Encoder<Tuple2<String, Integer>> writer,
-			final RollingPolicy<Tuple2<String, Integer>, String> rollingPolicy,
-			final BucketFactory<Tuple2<String, Integer>, String> bucketFactory) throws Exception {
+        return new OneInputStreamOperatorTestHarness<>(
+                new StreamSink<>(sink), MAX_PARALLELISM, totalParallelism, taskIdx);
+    }
 
-		StreamingFileSink<Tuple2<String, Integer>> sink = StreamingFileSink
-				.forRowFormat(new Path(outDir.toURI()), writer)
-				.withBucketAssigner(bucketer)
-				.withRollingPolicy(rollingPolicy)
-				.withBucketCheckInterval(bucketCheckInterval)
-				.withBucketFactory(bucketFactory)
-				.build();
+    static <ID>
+            OneInputStreamOperatorTestHarness<Tuple2<String, Integer>, Object>
+                    createCustomizedRescalingTestSink(
+                            final File outDir,
+                            final int totalParallelism,
+                            final int taskIdx,
+                            final long bucketCheckInterval,
+                            final BucketAssigner<Tuple2<String, Integer>, ID> bucketer,
+                            final Encoder<Tuple2<String, Integer>> writer,
+                            final RollingPolicy<Tuple2<String, Integer>, ID> rollingPolicy,
+                            final BucketFactory<Tuple2<String, Integer>, ID> bucketFactory)
+                            throws Exception {
 
-		return new OneInputStreamOperatorTestHarness<>(new StreamSink<>(sink), MAX_PARALLELISM, totalParallelism, taskIdx);
-	}
+        StreamingFileSink<Tuple2<String, Integer>> sink =
+                StreamingFileSink.forRowFormat(new Path(outDir.toURI()), writer)
+                        .withNewBucketAssignerAndPolicy(bucketer, rollingPolicy)
+                        .withBucketCheckInterval(bucketCheckInterval)
+                        .withBucketFactory(bucketFactory)
+                        .build();
 
-	static OneInputStreamOperatorTestHarness<Tuple2<String, Integer>, Object> createTestSinkWithBulkEncoder(
-			final File outDir,
-			final int totalParallelism,
-			final int taskIdx,
-			final long bucketCheckInterval,
-			final BucketAssigner<Tuple2<String, Integer>, String> bucketer,
-			final BulkWriter.Factory<Tuple2<String, Integer>> writer,
-			final BucketFactory<Tuple2<String, Integer>, String> bucketFactory) throws Exception {
+        return new OneInputStreamOperatorTestHarness<>(
+                new StreamSink<>(sink), MAX_PARALLELISM, totalParallelism, taskIdx);
+    }
 
-		return createTestSinkWithBulkEncoder(
-				outDir,
-				totalParallelism,
-				taskIdx,
-				bucketCheckInterval,
-				bucketer,
-				writer,
-				bucketFactory,
-				PartFileConfig.DEFAULT_PART_PREFIX,
-				PartFileConfig.DEFAULT_PART_SUFFIX);
-	}
+    static OneInputStreamOperatorTestHarness<Tuple2<String, Integer>, Object>
+            createTestSinkWithBulkEncoder(
+                    final File outDir,
+                    final int totalParallelism,
+                    final int taskIdx,
+                    final long bucketCheckInterval,
+                    final BucketAssigner<Tuple2<String, Integer>, String> bucketer,
+                    final BulkWriter.Factory<Tuple2<String, Integer>> writer,
+                    final BucketFactory<Tuple2<String, Integer>, String> bucketFactory)
+                    throws Exception {
 
-	static OneInputStreamOperatorTestHarness<Tuple2<String, Integer>, Object> createTestSinkWithBulkEncoder(
-			final File outDir,
-			final int totalParallelism,
-			final int taskIdx,
-			final long bucketCheckInterval,
-			final BucketAssigner<Tuple2<String, Integer>, String> bucketer,
-			final BulkWriter.Factory<Tuple2<String, Integer>> writer,
-			final BucketFactory<Tuple2<String, Integer>, String> bucketFactory,
-			final String partFilePrefix,
-			final String partFileSuffix) throws Exception {
+        return createTestSinkWithBulkEncoder(
+                outDir,
+                totalParallelism,
+                taskIdx,
+                bucketCheckInterval,
+                bucketer,
+                writer,
+                bucketFactory,
+                OutputFileConfig.builder().build());
+    }
 
-		StreamingFileSink<Tuple2<String, Integer>> sink = StreamingFileSink
-			.forBulkFormat(new Path(outDir.toURI()), writer)
-			.withBucketAssigner(bucketer)
-			.withBucketCheckInterval(bucketCheckInterval)
-			.withBucketFactory(bucketFactory)
-			.withPartFilePrefix(partFilePrefix)
-			.withPartFileSuffix(partFileSuffix)
-			.build();
+    static OneInputStreamOperatorTestHarness<Tuple2<String, Integer>, Object>
+            createTestSinkWithBulkEncoder(
+                    final File outDir,
+                    final int totalParallelism,
+                    final int taskIdx,
+                    final long bucketCheckInterval,
+                    final BucketAssigner<Tuple2<String, Integer>, String> bucketer,
+                    final BulkWriter.Factory<Tuple2<String, Integer>> writer,
+                    final BucketFactory<Tuple2<String, Integer>, String> bucketFactory,
+                    final OutputFileConfig outputFileConfig)
+                    throws Exception {
 
-		return new OneInputStreamOperatorTestHarness<>(new StreamSink<>(sink), MAX_PARALLELISM, totalParallelism, taskIdx);
-	}
+        StreamingFileSink<Tuple2<String, Integer>> sink =
+                StreamingFileSink.forBulkFormat(new Path(outDir.toURI()), writer)
+                        .withBucketAssigner(bucketer)
+                        .withBucketCheckInterval(bucketCheckInterval)
+                        .withRollingPolicy(build())
+                        .withBucketFactory(bucketFactory)
+                        .withOutputFileConfig(outputFileConfig)
+                        .build();
 
-	static void checkLocalFs(File outDir, int expectedInProgress, int expectedCompleted) {
-		int inProgress = 0;
-		int finished = 0;
+        return new OneInputStreamOperatorTestHarness<>(
+                new StreamSink<>(sink), MAX_PARALLELISM, totalParallelism, taskIdx);
+    }
 
-		for (File file: FileUtils.listFiles(outDir, null, true)) {
-			if (file.getAbsolutePath().endsWith("crc")) {
-				continue;
-			}
+    static <ID>
+            OneInputStreamOperatorTestHarness<Tuple2<String, Integer>, Object>
+                    createTestSinkWithCustomizedBulkEncoder(
+                            final File outDir,
+                            final int totalParallelism,
+                            final int taskIdx,
+                            final long bucketCheckInterval,
+                            final BucketAssigner<Tuple2<String, Integer>, ID> bucketer,
+                            final BulkWriter.Factory<Tuple2<String, Integer>> writer,
+                            final BucketFactory<Tuple2<String, Integer>, ID> bucketFactory)
+                            throws Exception {
 
-			if (file.toPath().getFileName().toString().startsWith(".")) {
-				inProgress++;
-			} else {
-				finished++;
-			}
-		}
+        return createTestSinkWithCustomizedBulkEncoder(
+                outDir,
+                totalParallelism,
+                taskIdx,
+                bucketCheckInterval,
+                bucketer,
+                writer,
+                bucketFactory,
+                OutputFileConfig.builder().build());
+    }
 
-		Assert.assertEquals(expectedInProgress, inProgress);
-		Assert.assertEquals(expectedCompleted, finished);
-	}
+    static <ID>
+            OneInputStreamOperatorTestHarness<Tuple2<String, Integer>, Object>
+                    createTestSinkWithCustomizedBulkEncoder(
+                            final File outDir,
+                            final int totalParallelism,
+                            final int taskIdx,
+                            final long bucketCheckInterval,
+                            final BucketAssigner<Tuple2<String, Integer>, ID> bucketer,
+                            final BulkWriter.Factory<Tuple2<String, Integer>> writer,
+                            final BucketFactory<Tuple2<String, Integer>, ID> bucketFactory,
+                            final OutputFileConfig outputFileConfig)
+                            throws Exception {
 
-	static Map<File, String> getFileContentByPath(File directory) throws IOException {
-		Map<File, String> contents = new HashMap<>(4);
+        StreamingFileSink<Tuple2<String, Integer>> sink =
+                StreamingFileSink.forBulkFormat(new Path(outDir.toURI()), writer)
+                        .withNewBucketAssigner(bucketer)
+                        .withRollingPolicy(build())
+                        .withBucketCheckInterval(bucketCheckInterval)
+                        .withBucketFactory(bucketFactory)
+                        .withOutputFileConfig(outputFileConfig)
+                        .build();
 
-		final Collection<File> filesInBucket = FileUtils.listFiles(directory, null, true);
-		for (File file : filesInBucket) {
-			contents.put(file, FileUtils.readFileToString(file));
-		}
-		return contents;
-	}
+        return new OneInputStreamOperatorTestHarness<>(
+                new StreamSink<>(sink), MAX_PARALLELISM, totalParallelism, taskIdx);
+    }
 
-	static class TupleToStringBucketer implements BucketAssigner<Tuple2<String, Integer>, String> {
+    static void checkLocalFs(File outDir, int expectedInProgress, int expectedCompleted) {
+        int inProgress = 0;
+        int finished = 0;
 
-		private static final long serialVersionUID = 1L;
+        for (File file : FileUtils.listFiles(outDir, null, true)) {
+            if (file.getAbsolutePath().endsWith("crc")) {
+                continue;
+            }
 
-		@Override
-		public String getBucketId(Tuple2<String, Integer> element, Context context) {
-			return element.f0;
-		}
+            if (file.toPath().getFileName().toString().startsWith(".")) {
+                inProgress++;
+            } else {
+                finished++;
+            }
+        }
 
-		@Override
-		public SimpleVersionedSerializer<String> getSerializer() {
-			return SimpleVersionedStringSerializer.INSTANCE;
-		}
-	}
+        Assert.assertEquals(expectedInProgress, inProgress);
+        Assert.assertEquals(expectedCompleted, finished);
+    }
 
-	/**
-	 * A simple {@link BucketAssigner} that accepts {@code String}'s
-	 * and returns the element itself as the bucket id.
-	 */
-	static class StringIdentityBucketAssigner implements BucketAssigner<String, String> {
-		private static final long serialVersionUID = 1L;
+    static Map<File, String> getFileContentByPath(File directory) throws IOException {
+        Map<File, String> contents = new HashMap<>(4);
 
-		@Override
-		public String getBucketId(String element, BucketAssigner.Context context) {
-			return element;
-		}
+        final Collection<File> filesInBucket = FileUtils.listFiles(directory, null, true);
+        for (File file : filesInBucket) {
+            contents.put(file, FileUtils.readFileToString(file));
+        }
+        return contents;
+    }
 
-		@Override
-		public SimpleVersionedSerializer<String> getSerializer() {
-			return SimpleVersionedStringSerializer.INSTANCE;
-		}
-	}
+    /** A simple {@link Encoder} that encodes {@code Tuple2} object. */
+    static class Tuple2Encoder implements Encoder<Tuple2<String, Integer>> {
+        @Override
+        public void encode(Tuple2<String, Integer> element, OutputStream stream)
+                throws IOException {
+            stream.write((element.f0 + '@' + element.f1).getBytes(StandardCharsets.UTF_8));
+            stream.write('\n');
+        }
+    }
 
-	/**
-	 * A mock {@link SinkFunction.Context} to be used in the tests.
-	 */
-	static class MockSinkContext implements SinkFunction.Context {
+    /**
+     * A simple {@link BucketAssigner} that returns the first (String) element of a {@code Tuple2}
+     * object as the bucket id.
+     */
+    static class TupleToStringBucketer implements BucketAssigner<Tuple2<String, Integer>, String> {
 
-		@Nullable
-		private Long elementTimestamp;
+        private static final long serialVersionUID = 1L;
 
-		private long watermark;
+        @Override
+        public String getBucketId(Tuple2<String, Integer> element, Context context) {
+            return element.f0;
+        }
 
-		private long processingTime;
+        @Override
+        public SimpleVersionedSerializer<String> getSerializer() {
+            return SimpleVersionedStringSerializer.INSTANCE;
+        }
+    }
 
-		MockSinkContext(
-				@Nullable Long elementTimestamp,
-				long watermark,
-				long processingTime) {
-			this.elementTimestamp = elementTimestamp;
-			this.watermark = watermark;
-			this.processingTime = processingTime;
-		}
+    /**
+     * A simple {@link BucketAssigner} that returns the second (Integer) element of a {@code Tuple2}
+     * object as the bucket id.
+     */
+    static class TupleToIntegerBucketer
+            implements BucketAssigner<Tuple2<String, Integer>, Integer> {
 
-		@Override
-		public long currentProcessingTime() {
-			return processingTime;
-		}
+        private static final long serialVersionUID = 1L;
 
-		@Override
-		public long currentWatermark() {
-			return watermark;
-		}
+        @Override
+        public Integer getBucketId(Tuple2<String, Integer> element, Context context) {
+            return element.f1;
+        }
 
-		@Nullable
-		@Override
-		public Long timestamp() {
-			return elementTimestamp;
-		}
-	}
+        @Override
+        public SimpleVersionedSerializer<Integer> getSerializer() {
+            return new SimpleVersionedIntegerSerializer();
+        }
+    }
 
-	/**
-	 * A mock {@link ListState} used for testing the snapshot/restore cycle of the sink.
-	 */
-	static class MockListState<T> implements ListState<T> {
+    private static final class SimpleVersionedIntegerSerializer
+            implements SimpleVersionedSerializer<Integer> {
+        static final int VERSION = 1;
 
-		private final List<T> backingList;
+        private SimpleVersionedIntegerSerializer() {}
 
-		MockListState() {
-			this.backingList = new ArrayList<>();
-		}
+        public int getVersion() {
+            return 1;
+        }
 
-		public List<T> getBackingList() {
-			return backingList;
-		}
+        public byte[] serialize(Integer value) {
+            byte[] bytes = new byte[4];
+            ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN).putInt(value);
+            return bytes;
+        }
 
-		@Override
-		public void update(List<T> values) {
-			backingList.clear();
-			addAll(values);
-		}
+        public Integer deserialize(int version, byte[] serialized) throws IOException {
+            Assert.assertEquals(1L, (long) version);
+            Assert.assertEquals(4L, serialized.length);
+            return ByteBuffer.wrap(serialized).order(ByteOrder.LITTLE_ENDIAN).getInt();
+        }
+    }
 
-		@Override
-		public void addAll(List<T> values) {
-			backingList.addAll(values);
-		}
+    /**
+     * A simple {@link BucketAssigner} that accepts {@code String}'s and returns the element itself
+     * as the bucket id.
+     */
+    static class StringIdentityBucketAssigner implements BucketAssigner<String, String> {
+        private static final long serialVersionUID = 1L;
 
-		@Override
-		public Iterable<T> get() {
-			return new Iterable<T>() {
+        @Override
+        public String getBucketId(String element, BucketAssigner.Context context) {
+            return element;
+        }
 
-				@Nonnull
-				@Override
-				public Iterator<T> iterator() {
-					return backingList.iterator();
-				}
-			};
-		}
+        @Override
+        public SimpleVersionedSerializer<String> getSerializer() {
+            return SimpleVersionedStringSerializer.INSTANCE;
+        }
+    }
 
-		@Override
-		public void add(T value) {
-			backingList.add(value);
-		}
+    /** A mock {@link SinkFunction.Context} to be used in the tests. */
+    static class MockSinkContext implements SinkFunction.Context {
 
-		@Override
-		public void clear() {
-			backingList.clear();
-		}
-	}
+        @Nullable private Long elementTimestamp;
+
+        private long watermark;
+
+        private long processingTime;
+
+        MockSinkContext(@Nullable Long elementTimestamp, long watermark, long processingTime) {
+            this.elementTimestamp = elementTimestamp;
+            this.watermark = watermark;
+            this.processingTime = processingTime;
+        }
+
+        @Override
+        public long currentProcessingTime() {
+            return processingTime;
+        }
+
+        @Override
+        public long currentWatermark() {
+            return watermark;
+        }
+
+        @Nullable
+        @Override
+        public Long timestamp() {
+            return elementTimestamp;
+        }
+    }
+
+    /** A mock {@link ListState} used for testing the snapshot/restore cycle of the sink. */
+    public static class MockListState<T> implements ListState<T> {
+
+        private final List<T> backingList;
+
+        public MockListState() {
+            this.backingList = new ArrayList<>();
+        }
+
+        public List<T> getBackingList() {
+            return backingList;
+        }
+
+        @Override
+        public void update(List<T> values) {
+            backingList.clear();
+            addAll(values);
+        }
+
+        @Override
+        public void addAll(List<T> values) {
+            backingList.addAll(values);
+        }
+
+        @Override
+        public Iterable<T> get() {
+            return new Iterable<T>() {
+
+                @Nonnull
+                @Override
+                public Iterator<T> iterator() {
+                    return backingList.iterator();
+                }
+            };
+        }
+
+        @Override
+        public void add(T value) {
+            backingList.add(value);
+        }
+
+        @Override
+        public void clear() {
+            backingList.clear();
+        }
+    }
 }

@@ -18,17 +18,17 @@
 package org.apache.flink.table.planner.plan.rules.logical
 
 import org.apache.flink.api.scala._
-import org.apache.flink.table.api.scala._
+import org.apache.flink.table.api._
 import org.apache.flink.table.planner.plan.optimize.program.{FlinkBatchProgram, FlinkHepRuleSetProgramBuilder, HEP_RULES_EXECUTION_TYPE}
 import org.apache.flink.table.planner.utils.{TableConfigUtils, TableTestBase}
 
 import org.apache.calcite.plan.hep.HepMatchOrder
-import org.apache.calcite.rel.rules.ProjectMultiJoinMergeRule
+import org.apache.calcite.rel.rules.CoreRules
 import org.apache.calcite.tools.RuleSets
 import org.junit.{Before, Test}
 
 /**
-  * Test for [[FlinkJoinToMultiJoinRule]].
+  * Tests for [[org.apache.calcite.rel.rules.JoinToMultiJoinRule]].
   */
 class FlinkJoinToMultiJoinRuleTest extends TableTestBase {
   private val util = batchTestUtil()
@@ -43,8 +43,8 @@ class FlinkJoinToMultiJoinRuleTest extends TableTestBase {
         .setHepRulesExecutionType(HEP_RULES_EXECUTION_TYPE.RULE_COLLECTION)
         .setHepMatchOrder(HepMatchOrder.BOTTOM_UP)
         .add(RuleSets.ofList(
-          FlinkJoinToMultiJoinRule.INSTANCE,
-          ProjectMultiJoinMergeRule.INSTANCE))
+          CoreRules.JOIN_TO_MULTI_JOIN,
+          CoreRules.PROJECT_MULTI_JOIN_MERGE))
         .build()
     )
 
@@ -57,7 +57,7 @@ class FlinkJoinToMultiJoinRuleTest extends TableTestBase {
   def testDoesNotMatchSemiJoin(): Unit = {
     val sqlQuery =
       "SELECT * FROM (SELECT * FROM T1 JOIN T2 ON a = c) t WHERE a IN (SELECT e FROM T3)"
-    util.verifyPlan(sqlQuery)
+    util.verifyRelPlan(sqlQuery)
   }
 
   @Test
@@ -67,6 +67,6 @@ class FlinkJoinToMultiJoinRuleTest extends TableTestBase {
         |SELECT * FROM (SELECT * FROM T1 JOIN T2 ON a = c) t
         |WHERE NOT EXISTS (SELECT e FROM T3  WHERE a = e)
       """.stripMargin
-    util.verifyPlan(sqlQuery)
+    util.verifyRelPlan(sqlQuery)
   }
 }

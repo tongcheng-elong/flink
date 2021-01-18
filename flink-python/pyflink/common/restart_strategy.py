@@ -15,9 +15,9 @@
 #  See the License for the specific language governing permissions and
 # limitations under the License.
 ################################################################################
-import sys
 from abc import ABCMeta
 from datetime import timedelta
+from typing import Optional
 
 from py4j.java_gateway import get_java_class
 
@@ -26,21 +26,16 @@ from pyflink.util.utils import to_j_flink_time, from_j_flink_time
 
 __all__ = ['RestartStrategies', 'RestartStrategyConfiguration']
 
-if sys.version >= '3':
-    long = int
 
-
-class RestartStrategyConfiguration(object):
+class RestartStrategyConfiguration(object, metaclass=ABCMeta):
     """
     Abstract configuration for restart strategies.
     """
 
-    __metaclass__ = ABCMeta
-
     def __init__(self, j_restart_strategy_configuration):
         self._j_restart_strategy_configuration = j_restart_strategy_configuration
 
-    def get_description(self):
+    def get_description(self) -> str:
         """
         Returns a description which is shown in the web interface.
 
@@ -89,7 +84,7 @@ class RestartStrategies(object):
         def __init__(self, restart_attempts=None, delay_between_attempts_interval=None,
                      j_restart_strategy=None):
             if j_restart_strategy is None:
-                if not isinstance(delay_between_attempts_interval, (timedelta, int, long)):
+                if not isinstance(delay_between_attempts_interval, (timedelta, int)):
                     raise TypeError("The delay_between_attempts_interval 'failure_interval' "
                                     "only supports integer and datetime.timedelta, current input "
                                     "type is %s." % type(delay_between_attempts_interval))
@@ -104,10 +99,10 @@ class RestartStrategies(object):
                 super(RestartStrategies.FixedDelayRestartStrategyConfiguration, self) \
                     .__init__(j_restart_strategy)
 
-        def get_restart_attempts(self):
+        def get_restart_attempts(self) -> int:
             return self._j_restart_strategy_configuration.getRestartAttempts()
 
-        def get_delay_between_attempts_interval(self):
+        def get_delay_between_attempts_interval(self) -> timedelta:
             return from_j_flink_time(
                 self._j_restart_strategy_configuration.getDelayBetweenAttemptsInterval())
 
@@ -122,11 +117,11 @@ class RestartStrategies(object):
                      delay_between_attempts_interval=None,
                      j_restart_strategy=None):
             if j_restart_strategy is None:
-                if not isinstance(failure_interval, (timedelta, int, long)):
+                if not isinstance(failure_interval, (timedelta, int)):
                     raise TypeError("The parameter 'failure_interval' "
                                     "only supports integer and datetime.timedelta, current input "
                                     "type is %s." % type(failure_interval))
-                if not isinstance(delay_between_attempts_interval, (timedelta, int, long)):
+                if not isinstance(delay_between_attempts_interval, (timedelta, int)):
                     raise TypeError("The delay_between_attempts_interval 'failure_interval' "
                                     "only supports integer and datetime.timedelta, current input "
                                     "type is %s." % type(delay_between_attempts_interval))
@@ -143,13 +138,13 @@ class RestartStrategies(object):
                 super(RestartStrategies.FailureRateRestartStrategyConfiguration, self)\
                     .__init__(j_restart_strategy)
 
-        def get_max_failure_rate(self):
+        def get_max_failure_rate(self) -> int:
             return self._j_restart_strategy_configuration.getMaxFailureRate()
 
-        def get_failure_interval(self):
+        def get_failure_interval(self) -> timedelta:
             return from_j_flink_time(self._j_restart_strategy_configuration.getFailureInterval())
 
-        def get_delay_between_attempts_interval(self):
+        def get_delay_between_attempts_interval(self) -> timedelta:
             return from_j_flink_time(self._j_restart_strategy_configuration
                                      .getDelayBetweenAttemptsInterval())
 
@@ -172,7 +167,7 @@ class RestartStrategies(object):
                     .__init__(j_restart_strategy)
 
     @staticmethod
-    def _from_j_restart_strategy(j_restart_strategy):
+    def _from_j_restart_strategy(j_restart_strategy) -> Optional[RestartStrategyConfiguration]:
         if j_restart_strategy is None:
             return None
         gateway = get_gateway()
@@ -201,7 +196,7 @@ class RestartStrategies(object):
             raise Exception("Unsupported java RestartStrategyConfiguration: %s" % clz.getName())
 
     @staticmethod
-    def no_restart():
+    def no_restart() -> 'NoRestartStrategyConfiguration':
         """
         Generates NoRestartStrategyConfiguration.
 
@@ -210,11 +205,12 @@ class RestartStrategies(object):
         return RestartStrategies.NoRestartStrategyConfiguration()
 
     @staticmethod
-    def fall_back_restart():
+    def fall_back_restart() -> 'FallbackRestartStrategyConfiguration':
         return RestartStrategies.FallbackRestartStrategyConfiguration()
 
     @staticmethod
-    def fixed_delay_restart(restart_attempts, delay_between_attempts):
+    def fixed_delay_restart(restart_attempts: int, delay_between_attempts: int) -> \
+            'FixedDelayRestartStrategyConfiguration':
         """
         Generates a FixedDelayRestartStrategyConfiguration.
 
@@ -228,7 +224,8 @@ class RestartStrategies(object):
                                                                         delay_between_attempts)
 
     @staticmethod
-    def failure_rate_restart(failure_rate, failure_interval, delay_interval):
+    def failure_rate_restart(failure_rate: int, failure_interval: int, delay_interval: int) -> \
+            'FailureRateRestartStrategyConfiguration':
         """
         Generates a FailureRateRestartStrategyConfiguration.
 

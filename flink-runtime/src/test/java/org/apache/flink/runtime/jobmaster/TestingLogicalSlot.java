@@ -30,117 +30,124 @@ import javax.annotation.Nullable;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicReference;
 
-/**
- * Simple logical slot for testing purposes.
- */
+/** Simple logical slot for testing purposes. */
 public class TestingLogicalSlot implements LogicalSlot {
 
-	private final TaskManagerLocation taskManagerLocation;
+    private final TaskManagerLocation taskManagerLocation;
 
-	private final TaskManagerGateway taskManagerGateway;
+    private final TaskManagerGateway taskManagerGateway;
 
-	private final AtomicReference<Payload> payloadReference;
+    private final AtomicReference<Payload> payloadReference;
 
-	private final int slotNumber;
+    private final int slotNumber;
 
-	private final CompletableFuture<?> releaseFuture;
+    private final CompletableFuture<?> releaseFuture;
 
-	private final boolean automaticallyCompleteReleaseFuture;
+    private final boolean automaticallyCompleteReleaseFuture;
 
-	private final SlotOwner slotOwner;
+    private final SlotOwner slotOwner;
 
-	private final AllocationID allocationId;
+    private final AllocationID allocationId;
 
-	private final SlotRequestId slotRequestId;
+    private final SlotRequestId slotRequestId;
 
-	private final SlotSharingGroupId slotSharingGroupId;
+    @Nullable private final SlotSharingGroupId slotSharingGroupId;
 
-	TestingLogicalSlot(
-			TaskManagerLocation taskManagerLocation,
-			TaskManagerGateway taskManagerGateway,
-			int slotNumber,
-			AllocationID allocationId,
-			SlotRequestId slotRequestId,
-			SlotSharingGroupId slotSharingGroupId,
-			boolean automaticallyCompleteReleaseFuture,
-			SlotOwner slotOwner) {
+    private boolean released;
 
-		this.taskManagerLocation = Preconditions.checkNotNull(taskManagerLocation);
-		this.taskManagerGateway = Preconditions.checkNotNull(taskManagerGateway);
-		this.payloadReference = new AtomicReference<>();
-		this.slotNumber = slotNumber;
-		this.allocationId = Preconditions.checkNotNull(allocationId);
-		this.slotRequestId = Preconditions.checkNotNull(slotRequestId);
-		this.slotSharingGroupId = Preconditions.checkNotNull(slotSharingGroupId);
-		this.releaseFuture = new CompletableFuture<>();
-		this.automaticallyCompleteReleaseFuture = automaticallyCompleteReleaseFuture;
-		this.slotOwner = slotOwner;
-	}
+    TestingLogicalSlot(
+            TaskManagerLocation taskManagerLocation,
+            TaskManagerGateway taskManagerGateway,
+            int slotNumber,
+            AllocationID allocationId,
+            SlotRequestId slotRequestId,
+            @Nullable SlotSharingGroupId slotSharingGroupId,
+            boolean automaticallyCompleteReleaseFuture,
+            SlotOwner slotOwner) {
 
-	@Override
-	public TaskManagerLocation getTaskManagerLocation() {
-		return taskManagerLocation;
-	}
+        this.taskManagerLocation = Preconditions.checkNotNull(taskManagerLocation);
+        this.taskManagerGateway = Preconditions.checkNotNull(taskManagerGateway);
+        this.payloadReference = new AtomicReference<>();
+        this.slotNumber = slotNumber;
+        this.allocationId = Preconditions.checkNotNull(allocationId);
+        this.slotRequestId = Preconditions.checkNotNull(slotRequestId);
+        this.slotSharingGroupId = slotSharingGroupId;
+        this.releaseFuture = new CompletableFuture<>();
+        this.automaticallyCompleteReleaseFuture = automaticallyCompleteReleaseFuture;
+        this.slotOwner = Preconditions.checkNotNull(slotOwner);
+    }
 
-	@Override
-	public TaskManagerGateway getTaskManagerGateway() {
-		return taskManagerGateway;
-	}
+    @Override
+    public TaskManagerLocation getTaskManagerLocation() {
+        return taskManagerLocation;
+    }
 
-	@Override
-	public Locality getLocality() {
-		return Locality.UNKNOWN;
-	}
+    @Override
+    public TaskManagerGateway getTaskManagerGateway() {
+        return taskManagerGateway;
+    }
 
-	@Override
-	public boolean isAlive() {
-		return !releaseFuture.isDone();
-	}
+    @Override
+    public Locality getLocality() {
+        return Locality.UNKNOWN;
+    }
 
-	@Override
-	public boolean tryAssignPayload(Payload payload) {
-		return payloadReference.compareAndSet(null, payload);
-	}
+    @Override
+    public boolean isAlive() {
+        return !releaseFuture.isDone();
+    }
 
-	@Nullable
-	@Override
-	public Payload getPayload() {
-		return payloadReference.get();
-	}
+    @Override
+    public boolean tryAssignPayload(Payload payload) {
+        return payloadReference.compareAndSet(null, payload);
+    }
 
-	@Override
-	public CompletableFuture<?> releaseSlot(@Nullable Throwable cause) {
-		slotOwner.returnLogicalSlot(this);
+    @Nullable
+    @Override
+    public Payload getPayload() {
+        return payloadReference.get();
+    }
 
-		if (automaticallyCompleteReleaseFuture) {
-			releaseFuture.complete(null);
-		}
+    @Override
+    public CompletableFuture<?> releaseSlot(@Nullable Throwable cause) {
+        if (!released) {
+            released = true;
 
-		return releaseFuture;
-	}
+            tryAssignPayload(TERMINATED_PAYLOAD);
+            payloadReference.get().fail(cause);
 
-	@Override
-	public int getPhysicalSlotNumber() {
-		return slotNumber;
-	}
+            slotOwner.returnLogicalSlot(this);
 
-	@Override
-	public AllocationID getAllocationId() {
-		return allocationId;
-	}
+            if (automaticallyCompleteReleaseFuture) {
+                releaseFuture.complete(null);
+            }
+        }
 
-	@Override
-	public SlotRequestId getSlotRequestId() {
-		return slotRequestId;
-	}
+        return releaseFuture;
+    }
 
-	@Nullable
-	@Override
-	public SlotSharingGroupId getSlotSharingGroupId() {
-		return slotSharingGroupId;
-	}
+    @Override
+    public int getPhysicalSlotNumber() {
+        return slotNumber;
+    }
 
-	public CompletableFuture<?> getReleaseFuture() {
-		return releaseFuture;
-	}
+    @Override
+    public AllocationID getAllocationId() {
+        return allocationId;
+    }
+
+    @Override
+    public SlotRequestId getSlotRequestId() {
+        return slotRequestId;
+    }
+
+    @Nullable
+    @Override
+    public SlotSharingGroupId getSlotSharingGroupId() {
+        return slotSharingGroupId;
+    }
+
+    public CompletableFuture<?> getReleaseFuture() {
+        return releaseFuture;
+    }
 }

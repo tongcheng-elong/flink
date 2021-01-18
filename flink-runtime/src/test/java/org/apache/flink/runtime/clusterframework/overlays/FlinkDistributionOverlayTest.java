@@ -29,130 +29,141 @@ import org.junit.rules.TemporaryFolder;
 
 import java.io.File;
 import java.io.IOException;
-import java.nio.file.Paths;
 import java.util.HashMap;
 import java.util.Map;
 
 import static org.apache.flink.configuration.ConfigConstants.ENV_FLINK_BIN_DIR;
 import static org.apache.flink.configuration.ConfigConstants.ENV_FLINK_CONF_DIR;
+import static org.apache.flink.configuration.ConfigConstants.ENV_FLINK_HOME_DIR;
 import static org.apache.flink.configuration.ConfigConstants.ENV_FLINK_LIB_DIR;
 import static org.apache.flink.configuration.ConfigConstants.ENV_FLINK_PLUGINS_DIR;
 import static org.apache.flink.runtime.clusterframework.overlays.FlinkDistributionOverlay.TARGET_ROOT;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.fail;
 
+/** Test {@link FlinkDistributionOverlay}. */
 public class FlinkDistributionOverlayTest extends ContainerOverlayTestBase {
 
-	@Rule
-	public TemporaryFolder tempFolder = new TemporaryFolder();
+    @Rule public TemporaryFolder tempFolder = new TemporaryFolder();
 
-	@Test
-	public void testConfigure() throws Exception {
-		File binFolder = tempFolder.newFolder("bin");
-		File libFolder = tempFolder.newFolder("lib");
-		File pluginsFolder = tempFolder.newFolder("plugins");
-		File confFolder = tempFolder.newFolder("conf");
+    @Test
+    public void testConfigure() throws Exception {
+        File binFolder = tempFolder.newFolder("bin");
+        File libFolder = tempFolder.newFolder("lib");
+        File pluginsFolder = tempFolder.newFolder("plugins");
+        File confFolder = tempFolder.newFolder("conf");
 
-		Path[] files = createPaths(
-			tempFolder.getRoot(),
-			"bin/config.sh",
-			"bin/taskmanager.sh",
-			"lib/foo.jar",
-			"lib/A/foo.jar",
-			"lib/B/foo.jar",
-			"lib/B/bar.jar",
-			"plugins/P1/plugin1a.jar",
-			"plugins/P1/plugin1b.jar",
-			"plugins/P2/plugin2.jar");
+        Path[] files =
+                createPaths(
+                        tempFolder.getRoot(),
+                        "bin/config.sh",
+                        "bin/taskmanager.sh",
+                        "lib/foo.jar",
+                        "lib/A/foo.jar",
+                        "lib/B/foo.jar",
+                        "lib/B/bar.jar",
+                        "plugins/P1/plugin1a.jar",
+                        "plugins/P1/plugin1b.jar",
+                        "plugins/P2/plugin2.jar");
 
-		testConfigure(binFolder, libFolder, pluginsFolder, confFolder, files);
-	}
+        testConfigure(binFolder, libFolder, pluginsFolder, confFolder, files);
+    }
 
-	@Test
-	public void testConfigureWithMissingPlugins() throws Exception {
-		File binFolder = tempFolder.newFolder("bin");
-		File libFolder = tempFolder.newFolder("lib");
-		File pluginsFolder = Paths.get(tempFolder.getRoot().getAbsolutePath(), "s0m3_p4th_th4t_sh0uld_n0t_3x1sts").toFile();
-		File confFolder = tempFolder.newFolder("conf");
+    private void testConfigure(
+            File binFolder, File libFolder, File pluginsFolder, File confFolder, Path[] files)
+            throws IOException {
+        ContainerSpecification containerSpecification = new ContainerSpecification();
+        FlinkDistributionOverlay overlay =
+                new FlinkDistributionOverlay(binFolder, confFolder, libFolder, pluginsFolder);
+        overlay.configure(containerSpecification);
 
-		Path[] files = createPaths(
-			tempFolder.getRoot(),
-			"bin/config.sh",
-			"bin/taskmanager.sh",
-			"lib/foo.jar",
-			"lib/A/foo.jar",
-			"lib/B/foo.jar",
-			"lib/B/bar.jar");
+        for (Path file : files) {
+            checkArtifact(containerSpecification, new Path(TARGET_ROOT, file.toString()));
+        }
+    }
 
-		testConfigure(binFolder, libFolder, pluginsFolder, confFolder, files);
-	}
+    @Test
+    public void testBuilderFromEnvironment() throws Exception {
+        Configuration conf = new Configuration();
 
-	private void testConfigure(
-			File binFolder,
-			File libFolder,
-			File pluginsFolder,
-			File confFolder,
-			Path[] files) throws IOException {
-		ContainerSpecification containerSpecification = new ContainerSpecification();
-		FlinkDistributionOverlay overlay = new FlinkDistributionOverlay(
-			binFolder,
-			confFolder,
-			libFolder,
-			pluginsFolder);
-		overlay.configure(containerSpecification);
+        File binFolder = tempFolder.newFolder("bin");
+        File libFolder = tempFolder.newFolder("lib");
+        File pluginsFolder = tempFolder.newFolder("plugins");
+        File confFolder = tempFolder.newFolder("conf");
 
-		for(Path file : files) {
-			checkArtifact(containerSpecification, new Path(TARGET_ROOT, file.toString()));
-		}
-	}
+        // adjust the test environment for the purposes of this test
+        Map<String, String> map = new HashMap<String, String>(System.getenv());
+        map.put(ENV_FLINK_BIN_DIR, binFolder.getAbsolutePath());
+        map.put(ENV_FLINK_LIB_DIR, libFolder.getAbsolutePath());
+        map.put(ENV_FLINK_PLUGINS_DIR, pluginsFolder.getAbsolutePath());
+        map.put(ENV_FLINK_CONF_DIR, confFolder.getAbsolutePath());
+        CommonTestUtils.setEnv(map);
 
-	@Test
-	public void testBuilderFromEnvironment() throws Exception {
-		Configuration conf = new Configuration();
+        FlinkDistributionOverlay.Builder builder =
+                FlinkDistributionOverlay.newBuilder().fromEnvironment(conf);
 
-		File binFolder = tempFolder.newFolder("bin");
-		File libFolder = tempFolder.newFolder("lib");
-		File pluginsFolder = tempFolder.newFolder("plugins");
-		File confFolder = tempFolder.newFolder("conf");
+        assertEquals(binFolder.getAbsolutePath(), builder.flinkBinPath.getAbsolutePath());
+        assertEquals(libFolder.getAbsolutePath(), builder.flinkLibPath.getAbsolutePath());
+        final File flinkPluginsPath = builder.flinkPluginsPath;
+        assertNotNull(flinkPluginsPath);
+        assertEquals(pluginsFolder.getAbsolutePath(), flinkPluginsPath.getAbsolutePath());
+        assertEquals(confFolder.getAbsolutePath(), builder.flinkConfPath.getAbsolutePath());
+    }
 
-		// adjust the test environment for the purposes of this test
-		Map<String, String> map = new HashMap<String, String>(System.getenv());
-		map.put(ENV_FLINK_BIN_DIR, binFolder.getAbsolutePath());
-		map.put(ENV_FLINK_LIB_DIR, libFolder.getAbsolutePath());
-		map.put(ENV_FLINK_PLUGINS_DIR, pluginsFolder.getAbsolutePath());
-		map.put(ENV_FLINK_CONF_DIR, confFolder.getAbsolutePath());
- 		CommonTestUtils.setEnv(map);
+    @Test
+    public void testSettingFlinkHomeEnv() throws IOException {
+        final ContainerSpecification containerSpecification = new ContainerSpecification();
+        final Configuration conf = new Configuration();
+        final File binFolder = tempFolder.newFolder("bin");
+        final File libFolder = tempFolder.newFolder("lib");
+        final File confFolder = tempFolder.newFolder("conf");
 
-		FlinkDistributionOverlay.Builder builder = FlinkDistributionOverlay.newBuilder().fromEnvironment(conf);
+        final Map<String, String> originalEnv = System.getenv();
+        final Map<String, String> testEnv = new HashMap<>(originalEnv);
+        testEnv.put(ENV_FLINK_BIN_DIR, binFolder.getAbsolutePath());
+        testEnv.put(ENV_FLINK_LIB_DIR, libFolder.getAbsolutePath());
+        testEnv.put(ENV_FLINK_CONF_DIR, confFolder.getAbsolutePath());
 
-		assertEquals(binFolder.getAbsolutePath(), builder.flinkBinPath.getAbsolutePath());
-		assertEquals(libFolder.getAbsolutePath(), builder.flinkLibPath.getAbsolutePath());
-		assertEquals(pluginsFolder.getAbsolutePath(), builder.flinkPluginsPath.getAbsolutePath());
-		assertEquals(confFolder.getAbsolutePath(), builder.flinkConfPath.getAbsolutePath());
-	}
+        CommonTestUtils.setEnv(testEnv);
 
-	@Test
-	public void testBuilderFromEnvironmentBad() throws Exception {
-		testBuilderFromEnvironmentBad(ENV_FLINK_BIN_DIR);
-		testBuilderFromEnvironmentBad(ENV_FLINK_LIB_DIR);
-		testBuilderFromEnvironmentBad(ENV_FLINK_PLUGINS_DIR);
-		testBuilderFromEnvironmentBad(ENV_FLINK_CONF_DIR);
-	}
+        try {
+            final FlinkDistributionOverlay flinkDistributionOverlay =
+                    FlinkDistributionOverlay.newBuilder().fromEnvironment(conf).build();
 
-	public void testBuilderFromEnvironmentBad(String obligatoryEnvironmentVariable) throws Exception {
-		Configuration conf = new Configuration();
+            flinkDistributionOverlay.configure(containerSpecification);
 
-		// adjust the test environment for the purposes of this test
-		Map<String, String> map = new HashMap<>(System.getenv());
-		map.remove(obligatoryEnvironmentVariable);
-		CommonTestUtils.setEnv(map);
+            assertEquals(
+                    FlinkDistributionOverlay.TARGET_ROOT_STR,
+                    containerSpecification.getEnvironmentVariables().get(ENV_FLINK_HOME_DIR));
+        } finally {
+            CommonTestUtils.setEnv(originalEnv);
+        }
+    }
 
-		try {
-			FlinkDistributionOverlay.Builder builder = FlinkDistributionOverlay.newBuilder().fromEnvironment(conf);
-			fail();
-		}
-		catch(IllegalStateException e) {
-			// expected
-		}
-	}
+    @Test
+    public void testBuilderFromEnvironmentBad() throws Exception {
+        testBuilderFromEnvironmentBad(ENV_FLINK_BIN_DIR);
+        testBuilderFromEnvironmentBad(ENV_FLINK_LIB_DIR);
+        testBuilderFromEnvironmentBad(ENV_FLINK_PLUGINS_DIR);
+        testBuilderFromEnvironmentBad(ENV_FLINK_CONF_DIR);
+    }
+
+    public void testBuilderFromEnvironmentBad(String obligatoryEnvironmentVariable)
+            throws Exception {
+        Configuration conf = new Configuration();
+
+        // adjust the test environment for the purposes of this test
+        Map<String, String> map = new HashMap<>(System.getenv());
+        map.remove(obligatoryEnvironmentVariable);
+        CommonTestUtils.setEnv(map);
+
+        try {
+            FlinkDistributionOverlay.Builder builder =
+                    FlinkDistributionOverlay.newBuilder().fromEnvironment(conf);
+            fail();
+        } catch (IllegalStateException e) {
+            // expected
+        }
+    }
 }

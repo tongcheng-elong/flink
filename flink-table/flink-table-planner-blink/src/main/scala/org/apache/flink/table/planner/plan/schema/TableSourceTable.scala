@@ -18,65 +18,97 @@
 
 package org.apache.flink.table.planner.plan.schema
 
-import org.apache.flink.table.planner.calcite.FlinkTypeFactory
+import org.apache.flink.table.catalog.{CatalogTable, ObjectIdentifier}
+import org.apache.flink.table.connector.source.DynamicTableSource
 import org.apache.flink.table.planner.plan.stats.FlinkStatistic
-import org.apache.flink.table.planner.sources.TableSourceUtil
-import org.apache.flink.table.sources.TableSource
 
-import org.apache.calcite.rel.`type`.{RelDataType, RelDataTypeFactory}
+import com.google.common.collect.ImmutableList
+import org.apache.calcite.plan.RelOptSchema
+import org.apache.calcite.rel.`type`.RelDataType
+
+import java.util
 
 /**
-  * Abstract class which define the interfaces required to convert a [[TableSource]] to
-  * a Calcite Table
-  *
-  * @param tableSource The [[TableSource]] for which is converted to a Calcite Table.
-  * @param isStreamingMode A flag that tells if the current table is in stream mode.
-  * @param statistic The table statistics.
-  */
-class TableSourceTable[T](
-    val tableSource: TableSource[T],
+ * A [[FlinkPreparingTableBase]] implementation which defines the context variables
+ * required to translate the Calcite [[org.apache.calcite.plan.RelOptTable]] to the Flink specific
+ * relational expression with [[DynamicTableSource]].
+ *
+ * @param relOptSchema The RelOptSchema that this table comes from
+ * @param tableIdentifier The full path of the table to retrieve.
+ * @param rowType The table row type
+ * @param statistic The table statistics
+ * @param tableSource The [[DynamicTableSource]] for which is converted to a Calcite Table
+ * @param isStreamingMode A flag that tells if the current table is in stream mode
+ * @param catalogTable Catalog table where this table source table comes from
+ * @param extraDigests The extra digests which will be added into `getQualifiedName`
+ *                     as a part of table digest
+ */
+class TableSourceTable(
+    relOptSchema: RelOptSchema,
+    val tableIdentifier: ObjectIdentifier,
+    rowType: RelDataType,
+    statistic: FlinkStatistic,
+    val tableSource: DynamicTableSource,
     val isStreamingMode: Boolean,
-    val statistic: FlinkStatistic,
-    val selectedFields: Option[Array[Int]])
-  extends FlinkTable {
+    val catalogTable: CatalogTable,
+    val extraDigests: Array[String] = Array.empty)
+  extends FlinkPreparingTableBase(
+    relOptSchema,
+    rowType,
+    util.Arrays.asList(
+      tableIdentifier.getCatalogName,
+      tableIdentifier.getDatabaseName,
+      tableIdentifier.getObjectName),
+    statistic) {
 
-  def this(tableSource: TableSource[T], isStreamingMode: Boolean, statistic: FlinkStatistic) {
-    this(tableSource, isStreamingMode, statistic, None)
-  }
-
-  // TODO implements this
-  // TableSourceUtil.validateTableSource(tableSource)
-
-  override def getRowType(typeFactory: RelDataTypeFactory): RelDataType = {
-    TableSourceUtil.getRelDataType(
-      tableSource,
-      selectedFields,
-      streaming = isStreamingMode,
-      typeFactory.asInstanceOf[FlinkTypeFactory])
-  }
-
-  /**
-    * Creates a copy of this table, changing statistic.
-    *
-    * @param statistic A new FlinkStatistic.
-    * @return Copy of this table, substituting statistic.
-    */
-  override def copy(statistic: FlinkStatistic): TableSourceTable[T] = {
-    new TableSourceTable(tableSource, isStreamingMode, statistic)
+  override def getQualifiedName: util.List[String] = {
+    val builder = ImmutableList.builder[String]()
+        .addAll(super.getQualifiedName)
+    extraDigests.foreach(builder.add)
+    builder.build()
   }
 
   /**
-    * Returns statistics of current table.
-    */
-  override def getStatistic: FlinkStatistic = statistic
+   * Creates a copy of this table with specified digest.
+   *
+   * @param newTableSource tableSource to replace
+   * @param newRowType new row type
+   * @return added TableSourceTable instance with specified digest
+   */
+  def copy(
+      newTableSource: DynamicTableSource,
+      newRowType: RelDataType,
+      newExtraDigests: Array[String]): TableSourceTable = {
+    new TableSourceTable(
+      relOptSchema,
+      tableIdentifier,
+      newRowType,
+      statistic,
+      newTableSource,
+      isStreamingMode,
+      catalogTable,
+      extraDigests ++ newExtraDigests)
+  }
 
   /**
-    * Replaces table source with the given one, and create a new table source table.
-    *
-    * @param tableSource tableSource to replace.
-    * @return new TableSourceTable
-    */
-  def replaceTableSource(tableSource: TableSource[T]): TableSourceTable[T] = {
-    new TableSourceTable[T](tableSource, isStreamingMode, statistic)
+   * Creates a copy of this table with specified digest and statistic.
+   *
+   * @param newTableSource tableSource to replace
+   * @param newStatistic statistic to replace
+   * @return added TableSourceTable instance with specified digest and statistic
+   */
+  def copy(
+      newTableSource: DynamicTableSource,
+      newStatistic: FlinkStatistic,
+      newExtraDigests: Array[String]): TableSourceTable = {
+    new TableSourceTable(
+      relOptSchema,
+      tableIdentifier,
+      rowType,
+      newStatistic,
+      newTableSource,
+      isStreamingMode,
+      catalogTable,
+      extraDigests ++ newExtraDigests)
   }
 }

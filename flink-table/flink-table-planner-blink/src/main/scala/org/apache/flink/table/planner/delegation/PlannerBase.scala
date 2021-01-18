@@ -20,43 +20,48 @@ package org.apache.flink.table.planner.delegation
 
 import org.apache.flink.annotation.VisibleForTesting
 import org.apache.flink.api.dag.Transformation
-import org.apache.flink.configuration.Configuration
-import org.apache.flink.sql.parser.dml.RichSqlInsert
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment
 import org.apache.flink.table.api.config.ExecutionConfigOptions
-import org.apache.flink.table.api.{TableConfig, TableEnvironment, TableException}
+import org.apache.flink.table.api.{TableConfig, TableEnvironment, TableException, TableSchema}
 import org.apache.flink.table.catalog._
-import org.apache.flink.table.delegation.{Executor, Planner}
-import org.apache.flink.table.factories.{TableFactoryService, TableFactoryUtil, TableSinkFactory}
+import org.apache.flink.table.connector.sink.DynamicTableSink
+import org.apache.flink.table.delegation.{Executor, Parser, Planner}
+import org.apache.flink.table.descriptors.{ConnectorDescriptorValidator, DescriptorProperties}
+import org.apache.flink.table.factories.{FactoryUtil, TableFactoryUtil}
 import org.apache.flink.table.operations.OutputConversionModifyOperation.UpdateMode
 import org.apache.flink.table.operations._
-import org.apache.flink.table.planner.calcite.{FlinkPlannerImpl, FlinkRelBuilder, FlinkTypeFactory}
+import org.apache.flink.table.planner.JMap
+import org.apache.flink.table.planner.calcite._
 import org.apache.flink.table.planner.catalog.CatalogManagerCalciteSchema
 import org.apache.flink.table.planner.expressions.PlannerTypeInferenceUtilImpl
-import org.apache.flink.table.planner.operations.SqlToOperationConverter
-import org.apache.flink.table.planner.plan.nodes.calcite.LogicalSink
-import org.apache.flink.table.planner.plan.nodes.exec.ExecNode
+import org.apache.flink.table.planner.hint.FlinkHints
+import org.apache.flink.table.planner.plan.nodes.calcite.LogicalLegacySink
+import org.apache.flink.table.planner.plan.nodes.exec.{ExecGraphGenerator, ExecNode}
 import org.apache.flink.table.planner.plan.nodes.physical.FlinkPhysicalRel
 import org.apache.flink.table.planner.plan.optimize.Optimizer
 import org.apache.flink.table.planner.plan.reuse.SubplanReuser
 import org.apache.flink.table.planner.plan.utils.SameRelObjectShuttle
-import org.apache.flink.table.planner.sinks.{DataStreamTableSink, TableSinkUtils}
+import org.apache.flink.table.planner.sinks.DynamicSinkUtils.validateSchemaAndApplyImplicitCast
+import org.apache.flink.table.planner.sinks.TableSinkUtils.{inferSinkPhysicalSchema, validateLogicalPhysicalTypesCompatible, validateTableSink}
+import org.apache.flink.table.planner.sinks.{DataStreamTableSink, DynamicSinkUtils, SelectTableSinkBase, SelectTableSinkSchemaConverter}
 import org.apache.flink.table.planner.utils.JavaScalaConversionUtil
-import org.apache.flink.table.sinks.{PartitionableTableSink, TableSink}
+import org.apache.flink.table.sinks.TableSink
 import org.apache.flink.table.types.utils.LegacyTypeInfoDataTypeConverter
+import org.apache.flink.table.utils.TableSchemaUtils
 
 import org.apache.calcite.jdbc.CalciteSchemaBuilder.asRootSchema
 import org.apache.calcite.plan.{RelTrait, RelTraitDef}
 import org.apache.calcite.rel.RelNode
-import org.apache.calcite.sql.SqlKind
+import org.apache.calcite.rel.`type`.RelDataType
 import org.apache.calcite.tools.FrameworkConfig
 
 import java.util
+import java.util.function.{Function => JFunction, Supplier => JSupplier}
 
 import _root_.scala.collection.JavaConversions._
 
 /**
-  * Implementation of [[Planner]] for legacy Flink planner. It supports only streaming use cases.
+  * Implementation of [[Planner]] for blink planner. It supports only streaming use cases.
   * (The new [[org.apache.flink.table.sources.InputFormatTableSource]] should work, but will be
   * handled as streaming sources, and no batch specific optimizations will be applied).
   *
@@ -73,19 +78,42 @@ abstract class PlannerBase(
     executor: Executor,
     config: TableConfig,
     val functionCatalog: FunctionCatalog,
-    catalogManager: CatalogManager,
+    val catalogManager: CatalogManager,
     isStreamingMode: Boolean)
   extends Planner {
 
   // temporary utility until we don't use planner expressions anymore
   functionCatalog.setPlannerTypeInferenceUtil(PlannerTypeInferenceUtilImpl.INSTANCE)
 
-  executor.asInstanceOf[ExecutorBase].setTableConfig(config)
+  private val sqlExprToRexConverterFactory = new SqlExprToRexConverterFactory {
+    override def create(tableRowType: RelDataType): SqlExprToRexConverter =
+      plannerContext.createSqlExprToRexConverter(tableRowType)
+  }
 
-  private val plannerContext: PlannerContext =
+  private val parser: Parser = new ParserImpl(
+    catalogManager,
+    new JSupplier[FlinkPlannerImpl] {
+      override def get(): FlinkPlannerImpl = createFlinkPlanner
+    },
+    // we do not cache the parser in order to use the most up to
+    // date configuration. Users might change parser configuration in TableConfig in between
+    // parsing statements
+    new JSupplier[CalciteParser] {
+      override def get(): CalciteParser = plannerContext.createCalciteParser()
+    },
+    new JFunction[TableSchema, SqlExprToRexConverter] {
+      override def apply(t: TableSchema): SqlExprToRexConverter = {
+        sqlExprToRexConverterFactory.create(plannerContext.getTypeFactory.buildRelNodeRowType(t))
+      }
+    }
+  )
+
+  @VisibleForTesting
+  private[flink] val plannerContext: PlannerContext =
     new PlannerContext(
       config,
       functionCatalog,
+      catalogManager,
       asRootSchema(new CatalogManagerCalciteSchema(catalogManager, isStreamingMode)),
       getTraitDefs.toList
     )
@@ -120,28 +148,19 @@ abstract class PlannerBase(
     executor.asInstanceOf[ExecutorBase].getExecutionEnvironment
   }
 
-  override def parse(stmt: String): util.List[Operation] = {
-    val planner = createFlinkPlanner
-    // parse the sql query
-    val parsed = planner.parse(stmt)
-    parsed match {
-      case insert: RichSqlInsert =>
-        List(SqlToOperationConverter.convert(planner, insert))
-      case query if query.getKind.belongsTo(SqlKind.QUERY) =>
-        List(SqlToOperationConverter.convert(planner, query))
-      case ddl if ddl.getKind.belongsTo(SqlKind.DDL) =>
-        List(SqlToOperationConverter.convert(planner, ddl))
-      case _ =>
-        throw new TableException(s"Unsupported query: $stmt")
-    }
-  }
+  override def getParser: Parser = parser
 
   override def translate(
       modifyOperations: util.List[ModifyOperation]): util.List[Transformation[_]] = {
     if (modifyOperations.isEmpty) {
       return List.empty[Transformation[_]]
     }
-    mergeParameters()
+    // prepare the execEnv before translating
+    getExecEnv.configure(
+      getTableConfig.getConfiguration,
+      Thread.currentThread().getContextClassLoader)
+    overrideEnvParallelism()
+
     val relNodes = modifyOperations.map(translateToRel)
     val optimizedRelNodes = optimize(relNodes)
     val execNodes = translateToExecNodePlan(optimizedRelNodes)
@@ -153,7 +172,7 @@ abstract class PlannerBase(
     val defaultParallelism = getTableConfig.getConfiguration.getInteger(
       ExecutionConfigOptions.TABLE_EXEC_RESOURCE_DEFAULT_PARALLELISM)
     if (defaultParallelism > 0) {
-      getExecEnv.setParallelism(defaultParallelism)
+      getExecEnv.getConfig.setParallelism(defaultParallelism)
     }
   }
 
@@ -170,37 +189,92 @@ abstract class PlannerBase(
     modifyOperation match {
       case s: UnregisteredSinkModifyOperation[_] =>
         val input = getRelBuilder.queryOperation(s.getChild).build()
-        LogicalSink.create(input, s.getSink, "UnregisteredSink")
+        val sinkSchema = s.getSink.getTableSchema
+        // validate query schema and sink schema, and apply cast if possible
+        val query = validateSchemaAndApplyImplicitCast(input, sinkSchema, null, getTypeFactory)
+        LogicalLegacySink.create(
+          query,
+          s.getSink,
+          "UnregisteredSink",
+          ConnectorCatalogTable.sink(s.getSink, !isStreamingMode))
+
+      case s: SelectSinkOperation =>
+        val input = getRelBuilder.queryOperation(s.getChild).build()
+        // convert query schema to sink schema
+        val sinkSchema = SelectTableSinkSchemaConverter.convertTimeAttributeToRegularTimestamp(
+          SelectTableSinkSchemaConverter.changeDefaultConversionClass(s.getChild.getTableSchema))
+        // validate query schema and sink schema, and apply cast if possible
+        val query = validateSchemaAndApplyImplicitCast(input, sinkSchema, null, getTypeFactory)
+        val sink = createSelectTableSink(sinkSchema)
+        s.setSelectResultProvider(sink.getSelectResultProvider)
+        LogicalLegacySink.create(
+          query,
+          sink,
+          "collect",
+          ConnectorCatalogTable.sink(sink, !isStreamingMode))
 
       case catalogSink: CatalogSinkModifyOperation =>
         val input = getRelBuilder.queryOperation(modifyOperation.getChild).build()
-        val identifier = catalogManager.qualifyIdentifier(catalogSink.getTablePath: _*)
-        getTableSink(identifier).map(sink => {
-          TableSinkUtils.validateSink(catalogSink, identifier, sink)
-          sink match {
-            case partitionableSink: PartitionableTableSink
-              if partitionableSink.getPartitionFieldNames != null
-                && partitionableSink.getPartitionFieldNames.nonEmpty =>
-              partitionableSink.setStaticPartition(catalogSink.getStaticPartitions)
-            case _ =>
-          }
-          LogicalSink.create(input, sink, catalogSink.getTablePath.mkString("."))
-        }) match {
+        val identifier = catalogSink.getTableIdentifier
+        val dynamicOptions = catalogSink.getDynamicOptions
+        getTableSink(identifier, dynamicOptions).map {
+          case (table, sink: TableSink[_]) =>
+            // check the logical field type and physical field type are compatible
+            val queryLogicalType = FlinkTypeFactory.toLogicalRowType(input.getRowType)
+            // validate logical schema and physical schema are compatible
+            validateLogicalPhysicalTypesCompatible(table, sink, queryLogicalType)
+            // validate TableSink
+            validateTableSink(catalogSink, identifier, sink, table.getPartitionKeys)
+            // validate query schema and sink schema, and apply cast if possible
+            val query = validateSchemaAndApplyImplicitCast(
+              input,
+              TableSchemaUtils.getPhysicalSchema(table.getSchema),
+              catalogSink.getTableIdentifier,
+              getTypeFactory)
+            LogicalLegacySink.create(
+              query,
+              sink,
+              identifier.toString,
+              table,
+              catalogSink.getStaticPartitions.toMap)
+
+          case (table, sink: DynamicTableSink) =>
+            DynamicSinkUtils.toRel(getRelBuilder, input, catalogSink, sink, table)
+        } match {
           case Some(sinkRel) => sinkRel
-          case None => throw new TableException(s"Sink ${catalogSink.getTablePath} does not exists")
+          case None =>
+            throw new TableException(s"Sink ${catalogSink.getTableIdentifier} does not exists")
         }
 
       case outputConversion: OutputConversionModifyOperation =>
         val input = getRelBuilder.queryOperation(outputConversion.getChild).build()
-        val (updatesAsRetraction, withChangeFlag) = outputConversion.getUpdateMode match {
+        val (needUpdateBefore, withChangeFlag) = outputConversion.getUpdateMode match {
           case UpdateMode.RETRACT => (true, true)
           case UpdateMode.APPEND => (false, false)
           case UpdateMode.UPSERT => (false, true)
         }
         val typeInfo = LegacyTypeInfoDataTypeConverter.toLegacyTypeInfo(outputConversion.getType)
+        val inputLogicalType = FlinkTypeFactory.toLogicalRowType(input.getRowType)
+        val sinkPhysicalSchema = inferSinkPhysicalSchema(
+          outputConversion.getType,
+          inputLogicalType,
+          withChangeFlag)
+        // validate query schema and sink schema, and apply cast if possible
+        val query = validateSchemaAndApplyImplicitCast(
+          input,
+          sinkPhysicalSchema,
+          null,
+          getTypeFactory)
         val tableSink = new DataStreamTableSink(
-          outputConversion.getChild, typeInfo, updatesAsRetraction, withChangeFlag)
-        LogicalSink.create(input, tableSink, "DataStreamTableSink")
+          FlinkTypeFactory.toTableSchema(query.getRowType),
+          typeInfo,
+          needUpdateBefore,
+          withChangeFlag)
+        LogicalLegacySink.create(
+          query,
+          tableSink,
+          "DataStreamTableSink",
+          ConnectorCatalogTable.sink(tableSink, !isStreamingMode))
 
       case _ =>
         throw new TableException(s"Unsupported ModifyOperation: $modifyOperation")
@@ -226,7 +300,13 @@ abstract class PlannerBase(
     */
   @VisibleForTesting
   private[flink] def translateToExecNodePlan(
-      optimizedRelNodes: Seq[RelNode]): util.List[ExecNode[_, _]] = {
+      optimizedRelNodes: Seq[RelNode]): util.List[ExecNode[_]] = {
+    val nonPhysicalRel = optimizedRelNodes.filterNot(_.isInstanceOf[FlinkPhysicalRel])
+    if (nonPhysicalRel.nonEmpty) {
+      throw new TableException("The expected optimized plan is FlinkPhysicalRel plan, " +
+        s"actual plan is ${nonPhysicalRel.head.getClass.getSimpleName} plan.")
+    }
+
     require(optimizedRelNodes.forall(_.isInstanceOf[FlinkPhysicalRel]))
     // Rewrite same rel object to different rel objects
     // in order to get the correct dag (dag reuse is based on object not digest)
@@ -235,7 +315,8 @@ abstract class PlannerBase(
     // reuse subplan
     val reusedPlan = SubplanReuser.reuseDuplicatedSubplan(relsWithoutSameObj, config)
     // convert FlinkPhysicalRel DAG to ExecNode DAG
-    reusedPlan.map(_.asInstanceOf[ExecNode[_, _]])
+    val generator = new ExecGraphGenerator()
+    generator.generate(reusedPlan.map(_.asInstanceOf[FlinkPhysicalRel]))
   }
 
   /**
@@ -244,55 +325,91 @@ abstract class PlannerBase(
     * @param execNodes The node DAG to translate.
     * @return The [[Transformation]] DAG that corresponds to the node DAG.
     */
-  protected def translateToPlan(execNodes: util.List[ExecNode[_, _]]): util.List[Transformation[_]]
+  protected def translateToPlan(execNodes: util.List[ExecNode[_]]): util.List[Transformation[_]]
 
-  private def getTableSink(objectIdentifier: ObjectIdentifier): Option[TableSink[_]] = {
-    JavaScalaConversionUtil.toScala(catalogManager.getTable(objectIdentifier)) match {
-      case Some(s) if s.isInstanceOf[ConnectorCatalogTable[_, _]] =>
-        JavaScalaConversionUtil
-          .toScala(s.asInstanceOf[ConnectorCatalogTable[_, _]].getTableSink)
+  /**
+   * Creates a [[SelectTableSinkBase]] for a select query.
+   *
+   * @param tableSchema the table schema of select result.
+   * @return The sink to fetch the select result.
+   */
+  protected def createSelectTableSink(tableSchema: TableSchema): SelectTableSinkBase[_]
 
-      case Some(s) if s.isInstanceOf[CatalogTable] =>
-
-        val catalog = catalogManager.getCatalog(objectIdentifier.getCatalogName)
-        val catalogTable = s.asInstanceOf[CatalogTable]
-        if (catalog.isPresent && catalog.get().getTableFactory.isPresent) {
-          val objectPath = objectIdentifier.toObjectPath
-          val sink = TableFactoryUtil.createTableSinkForCatalogTable(
-            catalog.get(),
-            catalogTable,
-            objectPath)
-          if (sink.isPresent) {
-            return Option(sink.get())
-          }
+  private def getTableSink(
+      objectIdentifier: ObjectIdentifier,
+      dynamicOptions: JMap[String, String])
+    : Option[(CatalogTable, Any)] = {
+    val lookupResult = JavaScalaConversionUtil.toScala(catalogManager.getTable(objectIdentifier))
+    lookupResult
+      .map(_.getTable) match {
+      case Some(table: ConnectorCatalogTable[_, _]) =>
+        JavaScalaConversionUtil.toScala(table.getTableSink) match {
+          case Some(sink) => Some(table, sink)
+          case None => None
         }
-        val sinkProperties = catalogTable.toProperties
-        Option(TableFactoryService.find(classOf[TableSinkFactory[_]], sinkProperties)
-          .createTableSink(sinkProperties))
+
+      case Some(table: CatalogTable) =>
+        val catalog = catalogManager.getCatalog(objectIdentifier.getCatalogName)
+        val tableToFind = if (dynamicOptions.nonEmpty) {
+          table.copy(FlinkHints.mergeTableOptions(dynamicOptions, table.getProperties))
+        } else {
+          table
+        }
+        val isTemporary = lookupResult.get.isTemporary
+        if (isLegacyConnectorOptions(objectIdentifier, table, isTemporary)) {
+          val tableSink = TableFactoryUtil.findAndCreateTableSink(
+            catalog.orElse(null),
+            objectIdentifier,
+            tableToFind,
+            getTableConfig.getConfiguration,
+            isStreamingMode,
+            isTemporary)
+          Option(table, tableSink)
+        } else {
+          val tableSink = FactoryUtil.createTableSink(
+            catalog.orElse(null),
+            objectIdentifier,
+            tableToFind,
+            getTableConfig.getConfiguration,
+            Thread.currentThread().getContextClassLoader,
+            isTemporary)
+          Option(table, tableSink)
+        }
 
       case _ => None
     }
   }
 
   /**
-    * Merge global job parameters and table config parameters,
-    * and set the merged result to GlobalJobParameters
-    */
-  private def mergeParameters(): Unit = {
-    val execEnv = getExecEnv
-    if (execEnv != null && execEnv.getConfig != null) {
-      val parameters = new Configuration()
-      if (config != null && config.getConfiguration != null) {
-        parameters.addAll(config.getConfiguration)
+   * Checks whether the [[CatalogTable]] uses legacy connector sink options.
+   */
+  private def isLegacyConnectorOptions(
+      objectIdentifier: ObjectIdentifier,
+      catalogTable: CatalogTable,
+      isTemporary: Boolean) = {
+    // normalize option keys
+    val properties = new DescriptorProperties(true)
+    properties.putProperties(catalogTable.getOptions)
+    if (properties.containsKey(ConnectorDescriptorValidator.CONNECTOR_TYPE)) {
+      true
+    } else {
+      val catalog = catalogManager.getCatalog(objectIdentifier.getCatalogName)
+      try {
+        // try to create legacy table source using the options,
+        // some legacy factories uses the new 'connector' key
+        TableFactoryUtil.findAndCreateTableSink(
+          catalog.orElse(null),
+          objectIdentifier,
+          catalogTable,
+          getTableConfig.getConfiguration,
+          isStreamingMode,
+          isTemporary)
+        // success, then we will use the legacy factories
+        true
+      } catch {
+        // fail, then we will use new factories
+        case _: Throwable => false
       }
-
-      if (execEnv.getConfig.getGlobalJobParameters != null) {
-        execEnv.getConfig.getGlobalJobParameters.toMap.foreach {
-          kv => parameters.setString(kv._1, kv._2)
-        }
-      }
-
-      execEnv.getConfig.setGlobalJobParameters(parameters)
     }
   }
 }

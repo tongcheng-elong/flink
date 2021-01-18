@@ -18,10 +18,8 @@
 
 package org.apache.flink.table.client.gateway.local.result;
 
-import org.apache.flink.api.common.typeinfo.TypeInformation;
-import org.apache.flink.table.client.gateway.local.ProgramDeployer;
+import org.apache.flink.core.execution.JobClient;
 import org.apache.flink.table.sinks.TableSink;
-import org.apache.flink.types.Row;
 
 /**
  * A result of a dynamic table program.
@@ -32,30 +30,20 @@ import org.apache.flink.types.Row;
  */
 public interface DynamicResult<C> extends Result<C> {
 
-	/**
-	 * Returns whether this result is materialized such that snapshots can be taken or results
-	 * must be retrieved record-wise.
-	 */
-	boolean isMaterialized();
+    /**
+     * Returns whether this result is materialized such that snapshots can be taken or results must
+     * be retrieved record-wise.
+     */
+    boolean isMaterialized();
 
-	/**
-	 * Returns the output type as defined by the query.
-	 */
-	TypeInformation<Row> getOutputType();
+    /**
+     * Starts retrieving the result using the given {@link JobClient} and monitors it's execution.
+     */
+    void startRetrieval(JobClient jobClient);
 
-	/**
-	 * Starts the table program using the given deployer and monitors it's execution.
-	 */
-	void startRetrieval(ProgramDeployer<C> deployer);
+    /** Returns the table sink required by this result type. */
+    TableSink<?> getTableSink();
 
-	/**
-	 * Returns the table sink required by this result type.
-	 */
-	TableSink<?> getTableSink();
-
-	/**
-	 * Closes the retrieval and all involved threads.
-	 */
-	void close();
-
+    /** Closes the retrieval and all involved threads. */
+    void close();
 }

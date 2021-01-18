@@ -20,32 +20,41 @@ package org.apache.flink.table.client.gateway;
 
 import org.apache.flink.table.api.TableSchema;
 
-/**
- * Describes a result to be expected from a table program.
- */
+/** Describes a result to be expected from a table program. */
 public class ResultDescriptor {
 
-	private final String resultId;
+    private final String resultId;
 
-	private final TableSchema resultSchema;
+    private final TableSchema resultSchema;
 
-	private final boolean isMaterialized;
+    private final boolean isMaterialized;
 
-	public ResultDescriptor(String resultId, TableSchema resultSchema, boolean isMaterialized) {
-		this.resultId = resultId;
-		this.resultSchema = resultSchema;
-		this.isMaterialized = isMaterialized;
-	}
+    private final boolean isTableauMode;
 
-	public String getResultId() {
-		return resultId;
-	}
+    public ResultDescriptor(
+            String resultId,
+            TableSchema resultSchema,
+            boolean isMaterialized,
+            boolean isTableauMode) {
+        this.resultId = resultId;
+        this.resultSchema = resultSchema;
+        this.isMaterialized = isMaterialized;
+        this.isTableauMode = isTableauMode;
+    }
 
-	public TableSchema getResultSchema() {
-		return resultSchema;
-	}
+    public String getResultId() {
+        return resultId;
+    }
 
-	public boolean isMaterialized() {
-		return isMaterialized;
-	}
+    public TableSchema getResultSchema() {
+        return resultSchema;
+    }
+
+    public boolean isMaterialized() {
+        return isMaterialized;
+    }
+
+    public boolean isTableauMode() {
+        return isTableauMode;
+    }
 }

@@ -3,7 +3,6 @@ title: 'Detecting Patterns in Tables'
 nav-parent_id: streaming_tableapi
 nav-title: 'Detecting Patterns'
 nav-pos: 5
-is_beta: true
 ---
 <!--
 Licensed to the Apache Software Foundation (ASF) under one
@@ -25,7 +24,7 @@ under the License.
 -->
 
 It is a common use case to search for a set of event patterns, especially in case of data streams.
-Flink comes with a [complex event processing (CEP) library]({{ site.baseurl }}/dev/libs/cep.html)
+Flink comes with a [complex event processing (CEP) library]({% link dev/libs/cep.md %})
 which allows for pattern detection in event streams. Furthermore, Flink's SQL API provides a
 relational way of expressing queries with a large set of built-in functions and rule-based
 optimizations that can be used out of the box.
@@ -67,9 +66,9 @@ FROM MyTable
 
 This page will explain each keyword in more detail and will illustrate more complex examples.
 
-<span class="label label-danger">Attention</span> Flink's implementation of the `MATCH_RECOGNIZE`
+{% info Notice %} Flink's implementation of the `MATCH_RECOGNIZE`
 clause is a subset of the full standard. Only those features documented in the following sections
-are supported. Since the development is still in an early phase, please also take a look at the
+are supported. Additional features may be supported based on community feedback, please also take a look at the
 [known limitations](#known-limitations).
 
 * This will be replaced by the TOC
@@ -93,10 +92,10 @@ project.
 {% endhighlight %}
 
 Alternatively, you can also add the dependency to the cluster classpath (see the
-[dependency section]({{ site.baseurl}}/dev/projectsetup/dependencies.html) for more information).
+[dependency section]({% link dev/project-configuration.md %}) for more information).
 
 If you want to use the `MATCH_RECOGNIZE` clause in the
-[SQL Client]({{ site.baseurl}}/dev/table/sqlClient.html), you don't have to do anything as all the
+[SQL Client]({% link dev/table/sqlClient.md %}), you don't have to do anything as all the
 dependencies are included by default.
 
 ### SQL Semantics
@@ -263,8 +262,8 @@ look at the [event stream navigation](#pattern-navigation) section.
 ### Aggregations
 
 Aggregations can be used in `DEFINE` and `MEASURES` clauses. Both
-[built-in]({{ site.baseurl }}/dev/table/sql.html#built-in-functions) and custom
-[user defined]({{ site.baseurl }}/dev/table/udfs.html) functions are supported.
+[built-in]({% link dev/table/functions/systemFunctions.md %}) and custom
+[user defined]({% link dev/table/functions/udfs.md %}) functions are supported.
 
 Aggregate functions are applied to each subset of rows mapped to a match. In order to understand
 how those subsets are evaluated have a look at the [event stream navigation](#pattern-navigation)
@@ -285,7 +284,7 @@ FROM Ticker
             LAST(A.rowtime) AS end_tstamp,
             AVG(A.price) AS avgPrice
         ONE ROW PER MATCH
-        AFTER MATCH SKIP TO FIRST B
+        AFTER MATCH SKIP PAST LAST ROW
         PATTERN (A+ B)
         DEFINE
             A AS AVG(A.price) < 15
@@ -307,19 +306,20 @@ symbol         rowtime         price    tax
 'ACME'  '01-Apr-11 10:00:07'   10      2
 'ACME'  '01-Apr-11 10:00:08'   15      2
 'ACME'  '01-Apr-11 10:00:09'   25      2
-'ACME'  '01-Apr-11 10:00:10'   30      1
+'ACME'  '01-Apr-11 10:00:10'   25      1
+'ACME'  '01-Apr-11 10:00:11'   30      1
 {% endhighlight %}
 
 The query will accumulate events as part of the pattern variable `A` as long as the average price
 of them does not exceed `15`. For example, such a limit exceeding happens at `01-Apr-11 10:00:04`.
-The following period exceeds the average price of `15` again at `01-Apr-11 10:00:10`. Thus the
+The following period exceeds the average price of `15` again at `01-Apr-11 10:00:11`. Thus the
 results for said query will be:
 
 {% highlight text %}
  symbol       start_tstamp       end_tstamp          avgPrice
 =========  ==================  ==================  ============
 ACME       01-APR-11 10:00:00  01-APR-11 10:00:03     14.5
-ACME       01-APR-11 10:00:04  01-APR-11 10:00:09     13.5
+ACME       01-APR-11 10:00:05  01-APR-11 10:00:10     13.5
 {% endhighlight %}
 
 <span class="label label-info">Note</span> Aggregations can be applied to expressions, but only if
@@ -598,7 +598,7 @@ conditions:
 {% highlight sql %}
 PATTERN (A B+)
 DEFINE
-  A AS A.price > 10,
+  A AS A.price >= 10,
   B AS B.price > A.price AND SUM(price) < 100 AND SUM(B.price) < 80
 {% endhighlight %}
 
@@ -714,7 +714,7 @@ variable. This can be expressed with two corresponding functions:
   <tbody>
   <tr>
     <td>
-      {% highlight text %}
+{% highlight text %}
 LAST(variable.field, n)
 {% endhighlight %}
     </td>
@@ -725,7 +725,7 @@ LAST(variable.field, n)
   </tr>
   <tr>
     <td>
-      {% highlight text %}
+{% highlight text %}
 FIRST(variable.field, n)
 {% endhighlight %}
     </td>
@@ -745,7 +745,7 @@ conditions:
 {% highlight sql %}
 PATTERN (A B+)
 DEFINE
-  A AS A.price > 10,
+  A AS A.price >= 10,
   B AS (LAST(B.price, 1) IS NULL OR B.price > LAST(B.price, 1)) AND
        (LAST(B.price, 2) IS NULL OR B.price > 2 * LAST(B.price, 2))
 {% endhighlight %}
@@ -782,7 +782,7 @@ The table consists of the following columns:
       <td>-&gt; B</td>
       <td>null</td>
       <td>null</td>
-      <td>Notice that <code>LAST(A.price, 1)</code> is null because there is still nothing mapped
+      <td>Notice that <code>LAST(B.price, 1)</code> is null because there is still nothing mapped
           to <code>B</code>.</td>
     </tr>
     <tr>
@@ -921,8 +921,9 @@ For the following input rows:
  XYZ      2     9       2018-09-17 10:00:02
  XYZ      1     10      2018-09-17 10:00:03
  XYZ      2     5       2018-09-17 10:00:04
- XYZ      2     17      2018-09-17 10:00:05
- XYZ      2     14      2018-09-17 10:00:06
+ XYZ      2     10      2018-09-17 10:00:05
+ XYZ      2     7       2018-09-17 10:00:06
+ XYZ      2     14      2018-09-17 10:00:07
 {% endhighlight %}
 
 We evaluate the following query with different strategies:
@@ -956,12 +957,12 @@ The query will produce different results based on which `AFTER MATCH` strategy w
  symbol   sumPrice        startTime              endTime
 ======== ========== ===================== =====================
  XYZ      26         2018-09-17 10:00:01   2018-09-17 10:00:04
- XYZ      17         2018-09-17 10:00:05   2018-09-17 10:00:06
+ XYZ      17         2018-09-17 10:00:05   2018-09-17 10:00:07
 {% endhighlight %}
 
 The first result matched against the rows #1, #2, #3, #4.
 
-The second result matched against the rows #5, #6.
+The second result matched against the rows #5, #6, #7.
 
 ##### `AFTER MATCH SKIP TO NEXT ROW`
 
@@ -970,9 +971,9 @@ The second result matched against the rows #5, #6.
 ======== ========== ===================== =====================
  XYZ      26         2018-09-17 10:00:01   2018-09-17 10:00:04
  XYZ      24         2018-09-17 10:00:02   2018-09-17 10:00:05
- XYZ      15         2018-09-17 10:00:03   2018-09-17 10:00:05
- XYZ      22         2018-09-17 10:00:04   2018-09-17 10:00:06
- XYZ      17         2018-09-17 10:00:05   2018-09-17 10:00:06
+ XYZ      25         2018-09-17 10:00:03   2018-09-17 10:00:06
+ XYZ      22         2018-09-17 10:00:04   2018-09-17 10:00:07
+ XYZ      17         2018-09-17 10:00:05   2018-09-17 10:00:07
 {% endhighlight %}
 
 Again, the first result matched against the rows #1, #2, #3, #4.
@@ -980,11 +981,11 @@ Again, the first result matched against the rows #1, #2, #3, #4.
 Compared to the previous strategy, the next match includes row #2 again for the next matching.
 Therefore, the second result matched against the rows #2, #3, #4, #5.
 
-The third result matched against the rows #3, #4, #5.
+The third result matched against the rows #3, #4, #5, #6.
 
-The forth result matched against the rows #4, #5, #6.
+The forth result matched against the rows #4, #5, #6, #7.
 
-The last result matched against the rows #5, #6.
+The last result matched against the rows #5, #6, #7.
 
 ##### `AFTER MATCH SKIP TO LAST A`
 
@@ -992,19 +993,16 @@ The last result matched against the rows #5, #6.
  symbol   sumPrice        startTime              endTime
 ======== ========== ===================== =====================
  XYZ      26         2018-09-17 10:00:01   2018-09-17 10:00:04
- XYZ      15         2018-09-17 10:00:03   2018-09-17 10:00:05
- XYZ      22         2018-09-17 10:00:04   2018-09-17 10:00:06
- XYZ      17         2018-09-17 10:00:05   2018-09-17 10:00:06
+ XYZ      25         2018-09-17 10:00:03   2018-09-17 10:00:06
+ XYZ      17         2018-09-17 10:00:05   2018-09-17 10:00:07
 {% endhighlight %}
 
 Again, the first result matched against the rows #1, #2, #3, #4.
 
 Compared to the previous strategy, the next match includes only row #3 (mapped to `A`) again for
-the next matching. Therefore, the second result matched against the rows #3, #4, #5.
+the next matching. Therefore, the second result matched against the rows #3, #4, #5, #6.
 
-The third result matched against the rows #4, #5, #6.
-
-The last result matched against the rows #5, #6.
+The last result matched against the rows #5, #6, #7.
 
 ##### `AFTER MATCH SKIP TO FIRST A`
 
@@ -1037,7 +1035,7 @@ use [time attributes](time_attributes.html). To select those there are available
       <td><p>Returns the timestamp of the last row that was mapped to the given pattern.</p>
       <p>The resulting attribute is a <a href="time_attributes.html">rowtime attribute</a>
          that can be used in subsequent time-based operations such as
-         <a href="#joins">time-windowed joins</a> and <a href="#aggregations">group window or over
+         <a href="{% link dev/table/streaming/joins.md %}#interval-joins">interval joins</a> and <a href="#aggregations">group window or over
          window aggregations</a>.</p></td>
     </tr>
     <tr>
@@ -1046,7 +1044,7 @@ use [time attributes](time_attributes.html). To select those there are available
       </td>
       <td><p>Returns a <a href="time_attributes.html#processing-time">proctime attribute</a>
           that can be used in subsequent time-based operations such as
-          <a href="#joins">time-windowed joins</a> and <a href="#aggregations">group window or over
+          <a href="{% link dev/table/streaming/joins.md %}#interval-joins">interval joins</a> and <a href="#aggregations">group window or over
           window aggregations</a>.</p></td>
     </tr>
   </tbody>

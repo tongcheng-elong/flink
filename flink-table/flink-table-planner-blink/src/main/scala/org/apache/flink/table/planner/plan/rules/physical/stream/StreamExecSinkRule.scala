@@ -19,12 +19,13 @@
 package org.apache.flink.table.planner.plan.rules.physical.stream
 
 import org.apache.flink.table.api.TableException
+import org.apache.flink.table.connector.sink.abilities.SupportsPartitioning
+import org.apache.flink.table.filesystem.FileSystemOptions
 import org.apache.flink.table.planner.plan.`trait`.FlinkRelDistribution
 import org.apache.flink.table.planner.plan.nodes.FlinkConventions
 import org.apache.flink.table.planner.plan.nodes.logical.FlinkLogicalSink
 import org.apache.flink.table.planner.plan.nodes.physical.stream.StreamExecSink
-import org.apache.flink.table.planner.sinks.DataStreamTableSink
-import org.apache.flink.table.sinks.PartitionableTableSink
+import org.apache.flink.table.types.logical.RowType
 
 import org.apache.calcite.plan.RelOptRule
 import org.apache.calcite.rel.RelNode
@@ -42,45 +43,57 @@ class StreamExecSinkRule extends ConverterRule(
     val sinkNode = rel.asInstanceOf[FlinkLogicalSink]
     val newTrait = rel.getTraitSet.replace(FlinkConventions.STREAM_PHYSICAL)
     var requiredTraitSet = sinkNode.getInput.getTraitSet.replace(FlinkConventions.STREAM_PHYSICAL)
-    sinkNode.sink match {
-      case partitionSink: PartitionableTableSink
-        if partitionSink.getPartitionFieldNames != null &&
-          partitionSink.getPartitionFieldNames.nonEmpty =>
-        val partitionFields = partitionSink.getPartitionFieldNames
-        val partitionIndices = partitionFields
-          .map(partitionSink.getTableSchema.getFieldNames.indexOf(_))
-        // validate
-        partitionIndices.foreach { idx =>
-          if (idx < 0) {
-            throw new TableException(s"Partitionable sink ${sinkNode.sinkName} field " +
-              s"${partitionFields.get(idx)} must be in the schema.")
+    if (sinkNode.catalogTable != null && sinkNode.catalogTable.isPartitioned) {
+      sinkNode.tableSink match {
+        case partitionSink: SupportsPartitioning =>
+          partitionSink.applyStaticPartition(sinkNode.staticPartitions)
+          val dynamicPartFields = sinkNode.catalogTable.getPartitionKeys
+              .filter(!sinkNode.staticPartitions.contains(_))
+          val fieldNames = sinkNode.catalogTable
+            .getSchema
+            .toPhysicalRowDataType
+            .getLogicalType.asInstanceOf[RowType]
+            .getFieldNames
+
+          if (dynamicPartFields.nonEmpty) {
+            val dynamicPartIndices =
+              dynamicPartFields.map(fieldNames.indexOf(_))
+
+            val shuffleEnable = sinkNode
+                .catalogTable
+                .getOptions
+                .get(FileSystemOptions.SINK_SHUFFLE_BY_PARTITION.key())
+
+            if (shuffleEnable != null && shuffleEnable.toBoolean) {
+              requiredTraitSet = requiredTraitSet.plus(
+                FlinkRelDistribution.hash(dynamicPartIndices
+                    .map(Integer.valueOf), requireStrict = false))
+            }
+
+            if (partitionSink.requiresPartitionGrouping(false)) {
+              throw new TableException("Partition grouping in stream mode is not supported yet!")
+            }
           }
-        }
-
-        if (partitionSink.configurePartitionGrouping(false)) {
-          throw new TableException("Partition grouping in stream mode is not supported yet!")
-        }
-
-        if (!partitionSink.isInstanceOf[DataStreamTableSink[_]]) {
-          requiredTraitSet = requiredTraitSet.plus(
-            FlinkRelDistribution.hash(partitionIndices
-              .map(Integer.valueOf), requireStrict = false))
-        }
-      case _ =>
+        case _ => throw new TableException(
+          s"'${sinkNode.tableIdentifier.asSummaryString()}' is a partitioned table, " +
+            s"but the underlying [${sinkNode.tableSink.asSummaryString()}] DynamicTableSink " +
+            s"doesn't implement SupportsPartitioning interface.")
+      }
     }
+
     val newInput = RelOptRule.convert(sinkNode.getInput, requiredTraitSet)
 
     new StreamExecSink(
       rel.getCluster,
       newTrait,
       newInput,
-      sinkNode.sink,
-      sinkNode.sinkName)
+      sinkNode.tableIdentifier,
+      sinkNode.catalogTable,
+      sinkNode.tableSink)
   }
 }
 
 object StreamExecSinkRule {
-
-  val INSTANCE: RelOptRule = new StreamExecSinkRule
-
+  val INSTANCE = new StreamExecSinkRule
 }
+

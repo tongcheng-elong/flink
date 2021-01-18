@@ -20,67 +20,120 @@ package org.apache.flink.runtime.highavailability;
 
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.HighAvailabilityOptions;
+import org.apache.flink.core.fs.Path;
+import org.apache.flink.runtime.concurrent.Executors;
 import org.apache.flink.runtime.jobmanager.HighAvailabilityMode;
 import org.apache.flink.util.TestLogger;
 
+import org.junit.ClassRule;
 import org.junit.Test;
-import org.mockito.Mockito;
+import org.junit.rules.TemporaryFolder;
 
+import java.io.IOException;
+import java.util.UUID;
 import java.util.concurrent.Executor;
 
+import static org.hamcrest.CoreMatchers.is;
 import static org.junit.Assert.assertSame;
+import static org.junit.Assert.assertThat;
 
-/**
- * Tests for the {@link HighAvailabilityServicesUtils} class.
- */
+/** Tests for the {@link HighAvailabilityServicesUtils} class. */
 public class HighAvailabilityServicesUtilsTest extends TestLogger {
 
-	@Test
-	public void testCreateCustomHAServices() throws Exception {
-		Configuration config = new Configuration();
+    @ClassRule public static TemporaryFolder temporaryFolder = new TemporaryFolder();
 
-		HighAvailabilityServices haServices = Mockito.mock(HighAvailabilityServices.class);
-		TestHAFactory.haServices = haServices;
+    @Test
+    public void testCreateCustomHAServices() throws Exception {
+        Configuration config = new Configuration();
 
-		Executor executor = Mockito.mock(Executor.class);
+        HighAvailabilityServices haServices = new TestingHighAvailabilityServices();
+        TestHAFactory.haServices = haServices;
 
-		config.setString(HighAvailabilityOptions.HA_MODE, TestHAFactory.class.getName());
+        Executor executor = Executors.directExecutor();
 
-		// when
-		HighAvailabilityServices actualHaServices = HighAvailabilityServicesUtils.createAvailableOrEmbeddedServices(config, executor);
+        config.setString(HighAvailabilityOptions.HA_MODE, TestHAFactory.class.getName());
 
-		// then
-		assertSame(haServices, actualHaServices);
+        // when
+        HighAvailabilityServices actualHaServices =
+                HighAvailabilityServicesUtils.createAvailableOrEmbeddedServices(config, executor);
 
-		// when
-		actualHaServices = HighAvailabilityServicesUtils.createHighAvailabilityServices(config, executor,
-			HighAvailabilityServicesUtils.AddressResolution.NO_ADDRESS_RESOLUTION);
-		// then
-		assertSame(haServices, actualHaServices);
-	}
+        // then
+        assertSame(haServices, actualHaServices);
 
-	@Test(expected = Exception.class)
-	public void testCustomHAServicesFactoryNotDefined() throws Exception {
-		Configuration config = new Configuration();
+        // when
+        actualHaServices =
+                HighAvailabilityServicesUtils.createHighAvailabilityServices(
+                        config,
+                        executor,
+                        HighAvailabilityServicesUtils.AddressResolution.NO_ADDRESS_RESOLUTION);
+        // then
+        assertSame(haServices, actualHaServices);
+    }
 
-		Executor executor = Mockito.mock(Executor.class);
+    @Test
+    public void testCreateCustomClientHAServices() throws Exception {
+        Configuration config = new Configuration();
 
-		config.setString(HighAvailabilityOptions.HA_MODE, HighAvailabilityMode.FACTORY_CLASS.name().toLowerCase());
+        ClientHighAvailabilityServices clientHAServices =
+                TestingClientHAServices.createClientHAServices();
+        TestHAFactory.clientHAServices = clientHAServices;
 
-		// expect
-		HighAvailabilityServicesUtils.createAvailableOrEmbeddedServices(config, executor);
-	}
+        config.setString(HighAvailabilityOptions.HA_MODE, TestHAFactory.class.getName());
 
-	/**
-	 * Testing class which needs to be public in order to be instantiatable.
-	 */
-	public static class TestHAFactory implements HighAvailabilityServicesFactory {
+        // when
+        ClientHighAvailabilityServices actualClientHAServices =
+                HighAvailabilityServicesUtils.createClientHAService(config);
 
-		static HighAvailabilityServices haServices;
+        // then
+        assertSame(clientHAServices, actualClientHAServices);
+    }
 
-		@Override
-		public HighAvailabilityServices createHAServices(Configuration configuration, Executor executor) {
-			return haServices;
-		}
-	}
+    @Test(expected = Exception.class)
+    public void testCustomHAServicesFactoryNotDefined() throws Exception {
+        Configuration config = new Configuration();
+
+        Executor executor = Executors.directExecutor();
+
+        config.setString(
+                HighAvailabilityOptions.HA_MODE,
+                HighAvailabilityMode.FACTORY_CLASS.name().toLowerCase());
+
+        // expect
+        HighAvailabilityServicesUtils.createAvailableOrEmbeddedServices(config, executor);
+    }
+
+    @Test
+    public void testGetClusterHighAvailableStoragePath() throws IOException {
+        final String haStorageRootDirectory = temporaryFolder.newFolder().getAbsolutePath();
+        final String clusterId = UUID.randomUUID().toString();
+        final Configuration configuration = new Configuration();
+
+        configuration.setString(HighAvailabilityOptions.HA_STORAGE_PATH, haStorageRootDirectory);
+        configuration.setString(HighAvailabilityOptions.HA_CLUSTER_ID, clusterId);
+
+        final Path clusterHighAvailableStoragePath =
+                HighAvailabilityServicesUtils.getClusterHighAvailableStoragePath(configuration);
+
+        final Path expectedPath = new Path(haStorageRootDirectory, clusterId);
+        assertThat(clusterHighAvailableStoragePath, is(expectedPath));
+    }
+
+    /** Testing class which needs to be public in order to be instantiatable. */
+    public static class TestHAFactory implements HighAvailabilityServicesFactory {
+
+        static HighAvailabilityServices haServices;
+        static ClientHighAvailabilityServices clientHAServices;
+
+        @Override
+        public HighAvailabilityServices createHAServices(
+                Configuration configuration, Executor executor) {
+            return haServices;
+        }
+
+        @Override
+        public ClientHighAvailabilityServices createClientHAServices(Configuration configuration)
+                throws Exception {
+            return clientHAServices;
+        }
+    }
 }

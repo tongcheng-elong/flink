@@ -26,10 +26,10 @@ import {
   ViewChild
 } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
-import { Subject } from 'rxjs';
-import { filter, takeUntil } from 'rxjs/operators';
+import { forkJoin, Observable, of, Subject } from 'rxjs';
+import { catchError, filter, map, takeUntil } from 'rxjs/operators';
 import { NodesItemCorrectInterface, NodesItemLinkInterface } from 'interfaces';
-import { JobService } from 'services';
+import { JobService, MetricsService } from 'services';
 import { DagreComponent } from 'share/common/dagre/dagre.component';
 
 @Component({
@@ -62,11 +62,50 @@ export class JobOverviewComponent implements OnInit, OnDestroy {
     }
   }
 
+  mergeWithBackPressure(nodes: NodesItemCorrectInterface[]): Observable<NodesItemCorrectInterface[]> {
+      return forkJoin(
+        nodes.map(node => {
+          return this.metricService.getAggregatedMetrics(this.jobId, node.id, ["backPressuredTimeMsPerSecond", "busyTimeMsPerSecond"]).pipe(
+            map(result => {
+              return {
+                ...node,
+                backPressuredPercentage: Math.min(Math.round(result.backPressuredTimeMsPerSecond / 10), 100),
+                busyPercentage: Math.min(Math.round(result.busyTimeMsPerSecond / 10), 100),
+              };
+            })
+          );
+        })
+      ).pipe(catchError(() => of(nodes)));
+    }
+
+  mergeWithWatermarks(nodes: NodesItemCorrectInterface[]): Observable<NodesItemCorrectInterface[]> {
+    return forkJoin(
+      nodes.map(node => {
+        return this.metricService.getWatermarks(this.jobId, node.id).pipe(
+          map(result => {
+            return { ...node, lowWatermark: result.lowWatermark };
+          })
+        );
+      })
+    ).pipe(catchError(() => of(nodes)));
+  }
+
+  refreshNodesWithMetrics() {
+    this.mergeWithBackPressure(this.nodes).subscribe(nodes => {
+      this.mergeWithWatermarks(nodes).subscribe(nodes2 => {
+        nodes2.forEach(node => {
+          this.dagreComponent.updateNode(node.id, node);
+        });
+      });
+    });
+  }
+
   constructor(
     private jobService: JobService,
     private router: Router,
     private activatedRoute: ActivatedRoute,
     public elementRef: ElementRef,
+    private metricService: MetricsService,
     private cdr: ChangeDetectorRef
   ) {}
 
@@ -82,11 +121,10 @@ export class JobOverviewComponent implements OnInit, OnDestroy {
           this.links = data.plan.links;
           this.jobId = data.plan.jid;
           this.dagreComponent.flush(this.nodes, this.links, true).then();
+          this.refreshNodesWithMetrics();
         } else {
           this.nodes = data.plan.nodes;
-          this.nodes.forEach(node => {
-            this.dagreComponent.updateNode(node.id, node);
-          });
+          this.refreshNodesWithMetrics();
         }
         this.cdr.markForCheck();
       });

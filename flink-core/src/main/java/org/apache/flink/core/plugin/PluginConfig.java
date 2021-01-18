@@ -29,49 +29,46 @@ import java.io.File;
 import java.nio.file.Path;
 import java.util.Optional;
 
-/**
- * Stores the configuration for plugins mechanism.
- */
+/** Stores the configuration for plugins mechanism. */
 @SuppressWarnings("OptionalUsedAsFieldOrParameterType")
 public class PluginConfig {
-	private static final Logger LOG = LoggerFactory.getLogger(PluginConfig.class);
+    private static final Logger LOG = LoggerFactory.getLogger(PluginConfig.class);
 
-	private final Optional<Path> pluginsPath;
+    private final Optional<Path> pluginsPath;
 
-	private final String[] alwaysParentFirstPatterns;
+    private final String[] alwaysParentFirstPatterns;
 
-	private PluginConfig(Optional<Path> pluginsPath, String[] alwaysParentFirstPatterns) {
-		this.pluginsPath = pluginsPath;
-		this.alwaysParentFirstPatterns = alwaysParentFirstPatterns;
-	}
+    private PluginConfig(Optional<Path> pluginsPath, String[] alwaysParentFirstPatterns) {
+        this.pluginsPath = pluginsPath;
+        this.alwaysParentFirstPatterns = alwaysParentFirstPatterns;
+    }
 
-	public Optional<Path> getPluginsPath() {
-		return pluginsPath;
-	}
+    public Optional<Path> getPluginsPath() {
+        return pluginsPath;
+    }
 
-	public String[] getAlwaysParentFirstPatterns() {
-		return alwaysParentFirstPatterns;
-	}
+    public String[] getAlwaysParentFirstPatterns() {
+        return alwaysParentFirstPatterns;
+    }
 
-	public static PluginConfig fromConfiguration(Configuration configuration) {
-		return new PluginConfig(
-			getPluginsDirPath(configuration),
-			CoreOptions.getParentFirstLoaderPatterns(configuration));
-	}
+    public static PluginConfig fromConfiguration(Configuration configuration) {
+        return new PluginConfig(
+                getPluginsDir().map(File::toPath),
+                CoreOptions.getPluginParentFirstLoaderPatterns(configuration));
+    }
 
-	private static Optional<Path> getPluginsDirPath(Configuration configuration) {
-		String pluginsDir = configuration.getString(ConfigConstants.ENV_FLINK_PLUGINS_DIR, null);
-		if (pluginsDir == null) {
-			LOG.info("Environment variable [{}] is not set", ConfigConstants.ENV_FLINK_PLUGINS_DIR);
-			return Optional.empty();
-		}
-		File pluginsDirFile = new File(pluginsDir);
-		if (!pluginsDirFile.isDirectory()) {
-			LOG.warn("Environment variable [{}] is set to [{}] but the directory doesn't exist",
-				ConfigConstants.ENV_FLINK_PLUGINS_DIR,
-				pluginsDir);
-			return Optional.empty();
-		}
-		return Optional.of(pluginsDirFile.toPath());
-	}
+    public static Optional<File> getPluginsDir() {
+        String pluginsDir =
+                System.getenv()
+                        .getOrDefault(
+                                ConfigConstants.ENV_FLINK_PLUGINS_DIR,
+                                ConfigConstants.DEFAULT_FLINK_PLUGINS_DIRS);
+
+        File pluginsDirFile = new File(pluginsDir);
+        if (!pluginsDirFile.isDirectory()) {
+            LOG.warn("The plugins directory [{}] does not exist.", pluginsDirFile);
+            return Optional.empty();
+        }
+        return Optional.of(pluginsDirFile);
+    }
 }

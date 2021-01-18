@@ -20,20 +20,17 @@ package org.apache.flink.runtime.resourcemanager;
 
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.api.common.time.Time;
-import org.apache.flink.configuration.Configuration;
-import org.apache.flink.configuration.MemorySize;
-import org.apache.flink.configuration.TaskManagerOptions;
 import org.apache.flink.runtime.clusterframework.types.ResourceID;
 import org.apache.flink.runtime.clusterframework.types.ResourceProfile;
 import org.apache.flink.runtime.heartbeat.HeartbeatServices;
 import org.apache.flink.runtime.highavailability.TestingHighAvailabilityServices;
 import org.apache.flink.runtime.instance.HardwareDescription;
+import org.apache.flink.runtime.io.network.partition.NoOpResourceManagerPartitionTracker;
 import org.apache.flink.runtime.jobmaster.utils.TestingJobMasterGateway;
 import org.apache.flink.runtime.jobmaster.utils.TestingJobMasterGatewayBuilder;
 import org.apache.flink.runtime.leaderelection.TestingLeaderElectionService;
 import org.apache.flink.runtime.leaderretrieval.LeaderRetrievalService;
 import org.apache.flink.runtime.leaderretrieval.SettableLeaderRetrievalService;
-import org.apache.flink.runtime.metrics.NoOpMetricRegistry;
 import org.apache.flink.runtime.metrics.groups.UnregisteredMetricGroups;
 import org.apache.flink.runtime.registration.RegistrationResponse;
 import org.apache.flink.runtime.resourcemanager.slotmanager.SlotManager;
@@ -42,7 +39,7 @@ import org.apache.flink.runtime.rest.messages.taskmanager.TaskManagerInfo;
 import org.apache.flink.runtime.rpc.RpcUtils;
 import org.apache.flink.runtime.rpc.TestingRpcService;
 import org.apache.flink.runtime.taskexecutor.TaskExecutorGateway;
-import org.apache.flink.runtime.taskexecutor.TaskManagerServices;
+import org.apache.flink.runtime.taskexecutor.TaskExecutorMemoryConfiguration;
 import org.apache.flink.runtime.taskexecutor.TestingTaskExecutorGatewayBuilder;
 import org.apache.flink.runtime.testingUtils.TestingUtils;
 import org.apache.flink.runtime.util.TestingFatalErrorHandler;
@@ -67,232 +64,252 @@ import static org.hamcrest.Matchers.nullValue;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThat;
 
-/**
- * Tests for the {@link ResourceManager}.
- */
+/** Tests for the {@link ResourceManager}. */
 public class ResourceManagerTest extends TestLogger {
 
-	private static final Time TIMEOUT = Time.minutes(2L);
+    private static final Time TIMEOUT = Time.minutes(2L);
 
-	private static final HeartbeatServices heartbeatServices = new HeartbeatServices(1000L, 10000L);
+    private static final HeartbeatServices heartbeatServices = new HeartbeatServices(1000L, 10000L);
 
-	private static final HeartbeatServices fastHeartbeatServices = new HeartbeatServices(1L, 1L);
+    private static final HeartbeatServices fastHeartbeatServices = new HeartbeatServices(1L, 1L);
 
-	private static final HardwareDescription hardwareDescription = new HardwareDescription(
-		42,
-		1337L,
-		1337L,
-		0L);
+    private static final HardwareDescription hardwareDescription =
+            new HardwareDescription(42, 1337L, 1337L, 0L);
 
-	private static final int dataPort = 1234;
+    private static final int dataPort = 1234;
 
-	private static TestingRpcService rpcService;
+    private static final int jmxPort = 23456;
 
-	private TestingHighAvailabilityServices highAvailabilityServices;
+    private static TestingRpcService rpcService;
 
-	private TestingLeaderElectionService resourceManagerLeaderElectionService;
+    private TestingHighAvailabilityServices highAvailabilityServices;
 
-	private TestingFatalErrorHandler testingFatalErrorHandler;
+    private TestingLeaderElectionService resourceManagerLeaderElectionService;
 
-	private ResourceID resourceManagerResourceId;
+    private TestingFatalErrorHandler testingFatalErrorHandler;
 
-	private TestingResourceManager resourceManager;
+    private ResourceID resourceManagerResourceId;
 
-	private ResourceManagerId resourceManagerId;
+    private TestingResourceManager resourceManager;
 
-	@BeforeClass
-	public static void setupClass() {
-		rpcService = new TestingRpcService();
-	}
+    private ResourceManagerId resourceManagerId;
 
-	@Before
-	public void setup() throws Exception {
-		highAvailabilityServices = new TestingHighAvailabilityServices();
-		resourceManagerLeaderElectionService = new TestingLeaderElectionService();
-		highAvailabilityServices.setResourceManagerLeaderElectionService(resourceManagerLeaderElectionService);
-		testingFatalErrorHandler = new TestingFatalErrorHandler();
-		resourceManagerResourceId = ResourceID.generate();
-	}
+    @BeforeClass
+    public static void setupClass() {
+        rpcService = new TestingRpcService();
+    }
 
-	@After
-	public void after() throws Exception {
-		if (resourceManager != null) {
-			RpcUtils.terminateRpcEndpoint(resourceManager, TIMEOUT);
-		}
+    @Before
+    public void setup() throws Exception {
+        highAvailabilityServices = new TestingHighAvailabilityServices();
+        resourceManagerLeaderElectionService = new TestingLeaderElectionService();
+        highAvailabilityServices.setResourceManagerLeaderElectionService(
+                resourceManagerLeaderElectionService);
+        testingFatalErrorHandler = new TestingFatalErrorHandler();
+        resourceManagerResourceId = ResourceID.generate();
+    }
 
-		if (highAvailabilityServices != null) {
-			highAvailabilityServices.closeAndCleanupAllData();
-		}
+    @After
+    public void after() throws Exception {
+        if (resourceManager != null) {
+            RpcUtils.terminateRpcEndpoint(resourceManager, TIMEOUT);
+        }
 
-		if (testingFatalErrorHandler.hasExceptionOccurred()) {
-			testingFatalErrorHandler.rethrowError();
-		}
-	}
+        if (highAvailabilityServices != null) {
+            highAvailabilityServices.closeAndCleanupAllData();
+        }
 
-	@AfterClass
-	public static void tearDownClass() throws Exception {
-		if (rpcService != null) {
-			RpcUtils.terminateRpcServices(TIMEOUT, rpcService);
-		}
-	}
+        if (testingFatalErrorHandler.hasExceptionOccurred()) {
+            testingFatalErrorHandler.rethrowError();
+        }
+    }
 
-	/**
-	 * Tests that we can retrieve the correct {@link TaskManagerInfo} from the {@link ResourceManager}.
-	 */
-	@Test
-	public void testRequestTaskManagerInfo() throws Exception {
-		final ResourceID taskManagerId = ResourceID.generate();
-		final TaskExecutorGateway taskExecutorGateway = new TestingTaskExecutorGatewayBuilder().setAddress(UUID.randomUUID().toString()).createTestingTaskExecutorGateway();
-		rpcService.registerGateway(taskExecutorGateway.getAddress(), taskExecutorGateway);
+    @AfterClass
+    public static void tearDownClass() throws Exception {
+        if (rpcService != null) {
+            RpcUtils.terminateRpcServices(TIMEOUT, rpcService);
+        }
+    }
 
-		resourceManager = createAndStartResourceManager(heartbeatServices);
-		final ResourceManagerGateway resourceManagerGateway = resourceManager.getSelfGateway(ResourceManagerGateway.class);
+    /**
+     * Tests that we can retrieve the correct {@link TaskManagerInfo} from the {@link
+     * ResourceManager}.
+     */
+    @Test
+    public void testRequestTaskManagerInfo() throws Exception {
+        final ResourceID taskManagerId = ResourceID.generate();
+        final TaskExecutorGateway taskExecutorGateway =
+                new TestingTaskExecutorGatewayBuilder()
+                        .setAddress(UUID.randomUUID().toString())
+                        .createTestingTaskExecutorGateway();
+        rpcService.registerGateway(taskExecutorGateway.getAddress(), taskExecutorGateway);
 
-		registerTaskExecutor(resourceManagerGateway, taskManagerId, taskExecutorGateway.getAddress());
+        resourceManager = createAndStartResourceManager(heartbeatServices);
+        final ResourceManagerGateway resourceManagerGateway =
+                resourceManager.getSelfGateway(ResourceManagerGateway.class);
 
-		CompletableFuture<TaskManagerInfo> taskManagerInfoFuture = resourceManagerGateway.requestTaskManagerInfo(
-			taskManagerId,
-			TestingUtils.TIMEOUT());
+        registerTaskExecutor(
+                resourceManagerGateway, taskManagerId, taskExecutorGateway.getAddress());
 
-		TaskManagerInfo taskManagerInfo = taskManagerInfoFuture.get();
+        CompletableFuture<TaskManagerInfo> taskManagerInfoFuture =
+                resourceManagerGateway.requestTaskManagerInfo(
+                        taskManagerId, TestingUtils.TIMEOUT());
 
-		assertEquals(taskManagerId, taskManagerInfo.getResourceId());
-		assertEquals(hardwareDescription, taskManagerInfo.getHardwareDescription());
-		assertEquals(taskExecutorGateway.getAddress(), taskManagerInfo.getAddress());
-		assertEquals(dataPort, taskManagerInfo.getDataPort());
-		assertEquals(0, taskManagerInfo.getNumberSlots());
-		assertEquals(0, taskManagerInfo.getNumberAvailableSlots());
-	}
+        TaskManagerInfo taskManagerInfo = taskManagerInfoFuture.get();
 
-	private void registerTaskExecutor(ResourceManagerGateway resourceManagerGateway, ResourceID taskExecutorId, String taskExecutorAddress) throws Exception {
-		final CompletableFuture<RegistrationResponse> registrationFuture = resourceManagerGateway.registerTaskExecutor(
-			taskExecutorAddress,
-			taskExecutorId,
-			dataPort,
-			hardwareDescription,
-			TestingUtils.TIMEOUT());
+        assertEquals(taskManagerId, taskManagerInfo.getResourceId());
+        assertEquals(hardwareDescription, taskManagerInfo.getHardwareDescription());
+        assertEquals(taskExecutorGateway.getAddress(), taskManagerInfo.getAddress());
+        assertEquals(dataPort, taskManagerInfo.getDataPort());
+        assertEquals(jmxPort, taskManagerInfo.getJmxPort());
+        assertEquals(0, taskManagerInfo.getNumberSlots());
+        assertEquals(0, taskManagerInfo.getNumberAvailableSlots());
+    }
 
-		assertThat(registrationFuture.get(), instanceOf(RegistrationResponse.Success.class));
-	}
+    private void registerTaskExecutor(
+            ResourceManagerGateway resourceManagerGateway,
+            ResourceID taskExecutorId,
+            String taskExecutorAddress)
+            throws Exception {
+        TaskExecutorRegistration taskExecutorRegistration =
+                new TaskExecutorRegistration(
+                        taskExecutorAddress,
+                        taskExecutorId,
+                        dataPort,
+                        jmxPort,
+                        hardwareDescription,
+                        new TaskExecutorMemoryConfiguration(
+                                1L, 2L, 3L, 4L, 5L, 6L, 7L, 8L, 9L, 10L),
+                        ResourceProfile.ZERO,
+                        ResourceProfile.ZERO);
+        final CompletableFuture<RegistrationResponse> registrationFuture =
+                resourceManagerGateway.registerTaskExecutor(
+                        taskExecutorRegistration, TestingUtils.TIMEOUT());
 
-	@Test
-	public void testHeartbeatTimeoutWithJobMaster() throws Exception {
-		final CompletableFuture<ResourceID> heartbeatRequestFuture = new CompletableFuture<>();
-		final CompletableFuture<ResourceManagerId> disconnectFuture = new CompletableFuture<>();
-		final TestingJobMasterGateway jobMasterGateway = new TestingJobMasterGatewayBuilder()
-			.setResourceManagerHeartbeatConsumer(heartbeatRequestFuture::complete)
-			.setDisconnectResourceManagerConsumer(disconnectFuture::complete)
-			.build();
-		rpcService.registerGateway(jobMasterGateway.getAddress(), jobMasterGateway);
-		final JobID jobId = new JobID();
-		final ResourceID jobMasterResourceId = ResourceID.generate();
-		final LeaderRetrievalService jobMasterLeaderRetrievalService = new SettableLeaderRetrievalService(jobMasterGateway.getAddress(), jobMasterGateway.getFencingToken().toUUID());
+        assertThat(registrationFuture.get(), instanceOf(RegistrationResponse.Success.class));
+    }
 
-		highAvailabilityServices.setJobMasterLeaderRetrieverFunction(requestedJobId -> {
-			assertThat(requestedJobId, is(equalTo(jobId)));
-			return jobMasterLeaderRetrievalService;
-		});
+    @Test
+    public void testHeartbeatTimeoutWithJobMaster() throws Exception {
+        final CompletableFuture<ResourceID> heartbeatRequestFuture = new CompletableFuture<>();
+        final CompletableFuture<ResourceManagerId> disconnectFuture = new CompletableFuture<>();
+        final TestingJobMasterGateway jobMasterGateway =
+                new TestingJobMasterGatewayBuilder()
+                        .setResourceManagerHeartbeatConsumer(heartbeatRequestFuture::complete)
+                        .setDisconnectResourceManagerConsumer(disconnectFuture::complete)
+                        .build();
+        rpcService.registerGateway(jobMasterGateway.getAddress(), jobMasterGateway);
+        final JobID jobId = new JobID();
+        final ResourceID jobMasterResourceId = ResourceID.generate();
+        final LeaderRetrievalService jobMasterLeaderRetrievalService =
+                new SettableLeaderRetrievalService(
+                        jobMasterGateway.getAddress(), jobMasterGateway.getFencingToken().toUUID());
 
-		runHeartbeatTimeoutTest(
-			resourceManagerGateway -> {
-				final CompletableFuture<RegistrationResponse> registrationFuture = resourceManagerGateway.registerJobManager(
-					jobMasterGateway.getFencingToken(),
-					jobMasterResourceId,
-					jobMasterGateway.getAddress(),
-					jobId,
-					TIMEOUT);
+        highAvailabilityServices.setJobMasterLeaderRetrieverFunction(
+                requestedJobId -> {
+                    assertThat(requestedJobId, is(equalTo(jobId)));
+                    return jobMasterLeaderRetrievalService;
+                });
 
-				assertThat(registrationFuture.get(), instanceOf(RegistrationResponse.Success.class));
-			},
-			resourceManagerResourceId -> {
-				// might have been completed or not depending whether the timeout was triggered first
-				final ResourceID optionalHeartbeatRequestOrigin = heartbeatRequestFuture.getNow(null);
-				assertThat(optionalHeartbeatRequestOrigin, anyOf(is(resourceManagerResourceId), is(nullValue())));
-				assertThat(disconnectFuture.get(), is(equalTo(resourceManagerId)));
-			});
-	}
+        runHeartbeatTimeoutTest(
+                resourceManagerGateway -> {
+                    final CompletableFuture<RegistrationResponse> registrationFuture =
+                            resourceManagerGateway.registerJobManager(
+                                    jobMasterGateway.getFencingToken(),
+                                    jobMasterResourceId,
+                                    jobMasterGateway.getAddress(),
+                                    jobId,
+                                    TIMEOUT);
 
-	@Test
-	public void testHeartbeatTimeoutWithTaskExecutor() throws Exception {
-		final ResourceID taskExecutorId = ResourceID.generate();
-		final CompletableFuture<ResourceID> heartbeatRequestFuture = new CompletableFuture<>();
-		final CompletableFuture<Exception> disconnectFuture = new CompletableFuture<>();
-		final TaskExecutorGateway taskExecutorGateway = new TestingTaskExecutorGatewayBuilder()
-			.setDisconnectResourceManagerConsumer(disconnectFuture::complete)
-			.setHeartbeatResourceManagerConsumer(heartbeatRequestFuture::complete)
-			.createTestingTaskExecutorGateway();
-		rpcService.registerGateway(taskExecutorGateway.getAddress(), taskExecutorGateway);
+                    assertThat(
+                            registrationFuture.get(),
+                            instanceOf(RegistrationResponse.Success.class));
+                },
+                resourceManagerResourceId -> {
+                    // might have been completed or not depending whether the timeout was triggered
+                    // first
+                    final ResourceID optionalHeartbeatRequestOrigin =
+                            heartbeatRequestFuture.getNow(null);
+                    assertThat(
+                            optionalHeartbeatRequestOrigin,
+                            anyOf(is(resourceManagerResourceId), is(nullValue())));
+                    assertThat(disconnectFuture.get(), is(equalTo(resourceManagerId)));
+                });
+    }
 
-		runHeartbeatTimeoutTest(
-			resourceManagerGateway -> {
-				registerTaskExecutor(resourceManagerGateway, taskExecutorId, taskExecutorGateway.getAddress());
-			},
-			resourceManagerResourceId -> {
-				// might have been completed or not depending whether the timeout was triggered first
-				final ResourceID optionalHeartbeatRequestOrigin = heartbeatRequestFuture.getNow(null);
-				assertThat(optionalHeartbeatRequestOrigin, anyOf(is(resourceManagerResourceId), is(nullValue())));
-				assertThat(disconnectFuture.get(), instanceOf(TimeoutException.class));
-			}
-		);
-	}
+    @Test
+    public void testHeartbeatTimeoutWithTaskExecutor() throws Exception {
+        final ResourceID taskExecutorId = ResourceID.generate();
+        final CompletableFuture<ResourceID> heartbeatRequestFuture = new CompletableFuture<>();
+        final CompletableFuture<Exception> disconnectFuture = new CompletableFuture<>();
+        final TaskExecutorGateway taskExecutorGateway =
+                new TestingTaskExecutorGatewayBuilder()
+                        .setDisconnectResourceManagerConsumer(disconnectFuture::complete)
+                        .setHeartbeatResourceManagerConsumer(heartbeatRequestFuture::complete)
+                        .createTestingTaskExecutorGateway();
+        rpcService.registerGateway(taskExecutorGateway.getAddress(), taskExecutorGateway);
 
-	private void runHeartbeatTimeoutTest(
-			ThrowingConsumer<ResourceManagerGateway, Exception> registerComponentAtResourceManager,
-			ThrowingConsumer<ResourceID, Exception> verifyHeartbeatTimeout) throws Exception {
-		resourceManager = createAndStartResourceManager(fastHeartbeatServices);
-		final ResourceManagerGateway resourceManagerGateway = resourceManager.getSelfGateway(ResourceManagerGateway.class);
+        runHeartbeatTimeoutTest(
+                resourceManagerGateway -> {
+                    registerTaskExecutor(
+                            resourceManagerGateway,
+                            taskExecutorId,
+                            taskExecutorGateway.getAddress());
+                },
+                resourceManagerResourceId -> {
+                    // might have been completed or not depending whether the timeout was triggered
+                    // first
+                    final ResourceID optionalHeartbeatRequestOrigin =
+                            heartbeatRequestFuture.getNow(null);
+                    assertThat(
+                            optionalHeartbeatRequestOrigin,
+                            anyOf(is(resourceManagerResourceId), is(nullValue())));
+                    assertThat(disconnectFuture.get(), instanceOf(TimeoutException.class));
+                });
+    }
 
-		registerComponentAtResourceManager.accept(resourceManagerGateway);
-		verifyHeartbeatTimeout.accept(resourceManagerResourceId);
-	}
+    private void runHeartbeatTimeoutTest(
+            ThrowingConsumer<ResourceManagerGateway, Exception> registerComponentAtResourceManager,
+            ThrowingConsumer<ResourceID, Exception> verifyHeartbeatTimeout)
+            throws Exception {
+        resourceManager = createAndStartResourceManager(fastHeartbeatServices);
+        final ResourceManagerGateway resourceManagerGateway =
+                resourceManager.getSelfGateway(ResourceManagerGateway.class);
 
-	private TestingResourceManager createAndStartResourceManager(HeartbeatServices heartbeatServices) throws Exception {
-		final SlotManager slotManager = SlotManagerBuilder.newBuilder()
-			.setScheduledExecutor(rpcService.getScheduledExecutor())
-			.build();
-		final JobLeaderIdService jobLeaderIdService = new JobLeaderIdService(
-			highAvailabilityServices,
-			rpcService.getScheduledExecutor(),
-			TestingUtils.infiniteTime());
+        registerComponentAtResourceManager.accept(resourceManagerGateway);
+        verifyHeartbeatTimeout.accept(resourceManagerResourceId);
+    }
 
-		final TestingResourceManager resourceManager = new TestingResourceManager(
-			rpcService,
-			ResourceManager.RESOURCE_MANAGER_NAME + UUID.randomUUID(),
-			resourceManagerResourceId,
-			highAvailabilityServices,
-			heartbeatServices,
-			slotManager,
-			NoOpMetricRegistry.INSTANCE,
-			jobLeaderIdService,
-			testingFatalErrorHandler,
-			UnregisteredMetricGroups.createUnregisteredJobManagerMetricGroup());
+    private TestingResourceManager createAndStartResourceManager(
+            HeartbeatServices heartbeatServices) throws Exception {
+        final SlotManager slotManager =
+                SlotManagerBuilder.newBuilder()
+                        .setScheduledExecutor(rpcService.getScheduledExecutor())
+                        .build();
+        final JobLeaderIdService jobLeaderIdService =
+                new JobLeaderIdService(
+                        highAvailabilityServices,
+                        rpcService.getScheduledExecutor(),
+                        TestingUtils.infiniteTime());
 
-		resourceManager.start();
+        final TestingResourceManager resourceManager =
+                new TestingResourceManager(
+                        rpcService,
+                        resourceManagerResourceId,
+                        highAvailabilityServices,
+                        heartbeatServices,
+                        slotManager,
+                        NoOpResourceManagerPartitionTracker::get,
+                        jobLeaderIdService,
+                        testingFatalErrorHandler,
+                        UnregisteredMetricGroups.createUnregisteredResourceManagerMetricGroup());
 
-		// first make the ResourceManager the leader
-		resourceManagerId = ResourceManagerId.generate();
-		resourceManagerLeaderElectionService.isLeader(resourceManagerId.toUUID()).get();
+        resourceManager.start();
 
-		return resourceManager;
-	}
+        // first make the ResourceManager the leader
+        resourceManagerId = ResourceManagerId.generate();
+        resourceManagerLeaderElectionService.isLeader(resourceManagerId.toUUID()).get();
 
-	/**
-	 * Tests that RM and TM create the same slot resource profiles.
-	 */
-	@Test
-	public void testCreateWorkerSlotProfiles() {
-		final Configuration config = new Configuration();
-		config.setString(TaskManagerOptions.MANAGED_MEMORY_SIZE, "100m");
-		config.setInteger(TaskManagerOptions.NUM_TASK_SLOTS, 5);
-
-		final ResourceProfile rmCalculatedResourceProfile =
-			ResourceManager.createWorkerSlotProfiles(config).iterator().next();
-
-		final ResourceProfile tmCalculatedResourceProfile =
-			TaskManagerServices.computeSlotResourceProfile(
-				config.getInteger(TaskManagerOptions.NUM_TASK_SLOTS),
-				MemorySize.parse(config.getString(TaskManagerOptions.MANAGED_MEMORY_SIZE)).getBytes());
-
-		assertEquals(rmCalculatedResourceProfile, tmCalculatedResourceProfile);
-	}
+        return resourceManager;
+    }
 }

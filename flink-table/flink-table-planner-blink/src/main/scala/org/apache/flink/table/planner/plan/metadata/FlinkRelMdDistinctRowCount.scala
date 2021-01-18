@@ -21,7 +21,7 @@ package org.apache.flink.table.planner.plan.metadata
 import org.apache.flink.table.api.TableException
 import org.apache.flink.table.planner.plan.nodes.calcite.{Expand, Rank, WindowAggregate}
 import org.apache.flink.table.planner.plan.nodes.physical.batch._
-import org.apache.flink.table.planner.plan.schema.FlinkRelOptTable
+import org.apache.flink.table.planner.plan.schema.FlinkPreparingTableBase
 import org.apache.flink.table.planner.plan.utils.{FlinkRelMdUtil, FlinkRelOptUtil, FlinkRexUtil, RankUtil}
 import org.apache.flink.table.planner.{JArrayList, JDouble}
 
@@ -56,7 +56,7 @@ class FlinkRelMdDistinctRowCount private extends MetadataHandler[BuiltInMetadata
         return 1D
       }
     }
-    val statistic = rel.getTable.asInstanceOf[FlinkRelOptTable].getFlinkStatistic
+    val statistic = rel.getTable.asInstanceOf[FlinkPreparingTableBase].getStatistic
     val fields = rel.getRowType.getFieldList
     val isKey = mq.areColumnsUnique(rel, groupKey)
     val isUnique = isKey != null && isKey
@@ -98,7 +98,7 @@ class FlinkRelMdDistinctRowCount private extends MetadataHandler[BuiltInMetadata
     val selectivity = RelMdUtil.guessSelectivity(predicate)
     val rowCount = mq.getRowCount(rel)
     val nRows = rowCount / 2
-    RelMdUtil.numDistinctVals(nRows, nRows * selectivity)
+    FlinkRelMdUtil.numDistinctVals(nRows, nRows * selectivity)
   }
 
   def getDistinctRowCount(
@@ -191,7 +191,7 @@ class FlinkRelMdDistinctRowCount private extends MetadataHandler[BuiltInMetadata
       distinctRowCount *= subRowCount
     }
     val rowCount = mq.getRowCount(rel)
-    RelMdUtil.numDistinctVals(distinctRowCount, rowCount)
+    FlinkRelMdUtil.numDistinctVals(distinctRowCount, rowCount)
   }
 
   def getDistinctRowCount(
@@ -309,7 +309,7 @@ class FlinkRelMdDistinctRowCount private extends MetadataHandler[BuiltInMetadata
   }
 
   def getDistinctRowCount(
-      rel: BatchExecGroupAggregateBase,
+      rel: BatchPhysicalGroupAggregateBase,
       mq: RelMetadataQuery,
       groupKey: ImmutableBitSet,
       predicate: RexNode): JDouble = {
@@ -397,9 +397,9 @@ class FlinkRelMdDistinctRowCount private extends MetadataHandler[BuiltInMetadata
       predicate: RexNode): (Option[RexNode], Option[RexNode]) = agg match {
     case rel: Aggregate =>
       FlinkRelMdUtil.splitPredicateOnAggregate(rel, predicate)
-    case rel: BatchExecGroupAggregateBase =>
+    case rel: BatchPhysicalGroupAggregateBase =>
       FlinkRelMdUtil.splitPredicateOnAggregate(rel, predicate)
-    case rel: BatchExecWindowAggregateBase =>
+    case rel: BatchPhysicalWindowAggregateBase =>
       FlinkRelMdUtil.splitPredicateOnAggregate(rel, predicate)
   }
 
@@ -427,7 +427,7 @@ class FlinkRelMdDistinctRowCount private extends MetadataHandler[BuiltInMetadata
   }
 
   def getDistinctRowCount(
-      rel: BatchExecWindowAggregateBase,
+      rel: BatchPhysicalWindowAggregateBase,
       mq: RelMetadataQuery,
       groupKey: ImmutableBitSet,
       predicate: RexNode): JDouble = {
@@ -438,7 +438,7 @@ class FlinkRelMdDistinctRowCount private extends MetadataHandler[BuiltInMetadata
     }
 
     val newPredicate = if (rel.isFinal) {
-      val namedWindowStartIndex = rel.getRowType.getFieldCount - rel.getNamedProperties.size
+      val namedWindowStartIndex = rel.getRowType.getFieldCount - rel.namedWindowProperties.size
       val groupKeyFromNamedWindow = groupKey.toList.exists(_ >= namedWindowStartIndex)
       if (groupKeyFromNamedWindow) {
         // cannot estimate DistinctRowCount result when some group keys are from named windows
@@ -455,7 +455,7 @@ class FlinkRelMdDistinctRowCount private extends MetadataHandler[BuiltInMetadata
       }
     } else {
       // local window aggregate
-      val assignTsFieldIndex = rel.getGrouping.length
+      val assignTsFieldIndex = rel.grouping.length
       if (groupKey.toList.contains(assignTsFieldIndex)) {
         // groupKey contains `assignTs` fields
         return null
@@ -472,7 +472,7 @@ class FlinkRelMdDistinctRowCount private extends MetadataHandler[BuiltInMetadata
       predicate: RexNode): JDouble = getDistinctRowCountOfOverAgg(rel, mq, groupKey, predicate)
 
   def getDistinctRowCount(
-      rel: BatchExecOverAggregate,
+      rel: BatchPhysicalOverAggregate,
       mq: RelMetadataQuery,
       groupKey: ImmutableBitSet,
       predicate: RexNode): JDouble = getDistinctRowCountOfOverAgg(rel, mq, groupKey, predicate)

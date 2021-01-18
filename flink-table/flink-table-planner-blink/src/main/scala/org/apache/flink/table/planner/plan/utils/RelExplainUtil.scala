@@ -22,7 +22,6 @@ import org.apache.flink.table.functions.{AggregateFunction, UserDefinedFunction}
 import org.apache.flink.table.planner.CalcitePair
 import org.apache.flink.table.planner.calcite.FlinkRelBuilder.PlannerNamedWindowProperty
 import org.apache.flink.table.planner.functions.aggfunctions.DeclarativeAggregateFunction
-import org.apache.flink.table.planner.functions.utils.TableSqlFunction
 import org.apache.flink.table.planner.plan.nodes.ExpressionFormat
 import org.apache.flink.table.planner.plan.nodes.ExpressionFormat.ExpressionFormat
 
@@ -31,7 +30,7 @@ import org.apache.calcite.rel.{RelCollation, RelWriter}
 import org.apache.calcite.rel.`type`.RelDataType
 import org.apache.calcite.rel.core.Window.Group
 import org.apache.calcite.rel.core.{AggregateCall, Window}
-import org.apache.calcite.rex.{RexCall, RexInputRef, RexLiteral, RexNode, RexProgram, RexWindowBound}
+import org.apache.calcite.rex._
 import org.apache.calcite.sql.SqlKind
 import org.apache.calcite.sql.SqlMatchRecognize.AfterOption
 
@@ -47,11 +46,11 @@ import scala.collection.mutable
 object RelExplainUtil {
 
   /**
-    * Returns the prefer [[ExpressionFormat]] of the [[RelWriter]]. Use Prefix for traditional
-    * writers, but use Infix for [[RelDescriptionWriterImpl]] which is more readable.
-    * The [[RelDescriptionWriterImpl]] is mainly used to generate
-    * [[org.apache.flink.table.planner.plan.nodes.FlinkRelNode#getRelDetailedDescription()]].
-    */
+   * Returns the prefer [[ExpressionFormat]] of the [[RelWriter]]. Use Prefix for traditional
+   * writers, but use Infix for [[RelDescriptionWriterImpl]] which is more readable.
+   * The [[RelDescriptionWriterImpl]] is mainly used to generate
+   * [[org.apache.flink.table.planner.plan.nodes.FlinkRelNode#getRelDetailedDescription()]].
+   */
   def preferExpressionFormat(pw: RelWriter): ExpressionFormat = pw match {
     // infix format is more readable for displaying
     case _: RelDescriptionWriterImpl => ExpressionFormat.Infix
@@ -65,6 +64,13 @@ object RelExplainUtil {
   def fieldToString(fieldIndices: Array[Int], inputType: RelDataType): String = {
     val fieldNames = inputType.getFieldNames
     fieldIndices.map(fieldNames(_)).mkString(", ")
+  }
+
+  /**
+    * Returns the Java string representation of this literal.
+    */
+  def literalToString(literal: RexLiteral): String = {
+    literal.computeDigest(RexDigestIncludeType.NO_TYPE)
   }
 
   /**
@@ -630,12 +636,11 @@ object RelExplainUtil {
   def correlateToString(
       inputType: RelDataType,
       rexCall: RexCall,
-      sqlFunction: TableSqlFunction,
       expression: (RexNode, List[String], Option[List[RexNode]]) => String): String = {
+    val name = rexCall.getOperator.toString
     val inFields = inputType.getFieldNames.toList
-    val udtfName = sqlFunction.toString
     val operands = rexCall.getOperands.map(expression(_, inFields, None)).mkString(",")
-    s"table($udtfName($operands))"
+    s"table($name($operands))"
   }
 
   def windowAggregationToString(
