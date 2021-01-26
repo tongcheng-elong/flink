@@ -547,8 +547,7 @@ public final class FactoryUtil {
          */
         public void validate() {
             validateFactoryOptions(tableFactory, allOptions);
-            validateUnconsumedKeys(
-                    tableFactory.factoryIdentifier(), allOptions.keySet(), consumedOptionKeys);
+            //validateUnconsumedKeys(tableFactory.factoryIdentifier(), allOptions.keySet(), consumedOptionKeys);
         }
 
         /**
