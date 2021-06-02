@@ -22,6 +22,7 @@ import org.apache.flink.client.deployment.application.UnsuccessfulExecutionExcep
 import org.apache.flink.configuration.ConfigConstants;
 import org.apache.flink.configuration.ReadableConfig;
 import org.apache.flink.core.fs.Path;
+import org.apache.flink.python.util.ZipUtils;
 import org.apache.flink.util.ExceptionUtils;
 import org.apache.flink.util.FileUtils;
 import org.apache.flink.util.NetUtils;
@@ -116,19 +117,12 @@ final class PythonEnvUtils {
      * @param config The Python configurations.
      * @param entryPointScript The entry point script, optional.
      * @param tmpDir The temporary directory which files will be copied to.
+     *
      * @return PythonEnvironment the Python environment which will be executed in Python process.
      */
     static PythonEnvironment preparePythonEnvironment(
             ReadableConfig config, String entryPointScript, String tmpDir) throws IOException {
         PythonEnvironment env = new PythonEnvironment();
-
-        // 1. set the path of python interpreter.
-        String pythonExec =
-                config.getOptional(PYTHON_CLIENT_EXECUTABLE)
-                        .orElse(System.getenv(PYFLINK_CLIENT_EXECUTABLE));
-        if (pythonExec != null) {
-            env.pythonExec = pythonExec;
-        }
 
         // 2. setup temporary local directory for the user files
         tmpDir = new File(tmpDir).getAbsolutePath();
@@ -156,6 +150,14 @@ final class PythonEnvUtils {
         }
         if (entryPointScript != null) {
             addToPythonPath(env, Collections.singletonList(new Path(entryPointScript)));
+        }
+
+        // 1. set the path of python interpreter.
+        String pythonExec =
+                config.getOptional(PYTHON_CLIENT_EXECUTABLE)
+                        .orElse(System.getenv(PYFLINK_CLIENT_EXECUTABLE));
+        if (pythonExec != null) {
+            env.pythonExec = pythonExec;
         }
         return env;
     }
@@ -229,6 +231,14 @@ final class PythonEnvUtils {
             } else {
                 try {
                     FileUtils.copy(pythonFile, targetPath, true);
+                    if (sourceFileName.endsWith(".zip")) {
+                        ZipUtils.extractZipFileWithPermissions(
+                                pythonFile.getPath(),
+                                targetPath.getPath());
+                        env.systemEnv.put("FLINK_USER_ZIP_" + pythonFile.getName().toUpperCase(),
+                                targetPath.getPath());
+                    }
+
                 } catch (Exception e) {
                     LOG.error(
                             "Error occurred when copying {} to {}, skipping...",
@@ -258,7 +268,9 @@ final class PythonEnvUtils {
      *
      * @param pythonEnv the python Environment which will be in a process.
      * @param commands the commands that python process will execute.
+     *
      * @return the process represent the python process.
+     *
      * @throws IOException Thrown if an error occurred when python process start.
      */
     static Process startPythonProcess(
@@ -343,7 +355,7 @@ final class PythonEnvUtils {
      */
     private static void resetCallbackClientExecutorService(GatewayServer gatewayServer)
             throws NoSuchFieldException, IllegalAccessException, NoSuchMethodException,
-                    InvocationTargetException {
+            InvocationTargetException {
         CallbackClient callbackClient = (CallbackClient) gatewayServer.getCallbackClient();
         // The Java API of py4j does not provide approach to set "daemonize_connections" parameter.
         // Use reflect to daemonize the connection thread.
@@ -366,7 +378,7 @@ final class PythonEnvUtils {
     public static void resetCallbackClient(
             String callbackServerListeningAddress, int callbackServerListeningPort)
             throws UnknownHostException, InvocationTargetException, NoSuchMethodException,
-                    IllegalAccessException, NoSuchFieldException {
+            IllegalAccessException, NoSuchFieldException {
 
         gatewayServer = getGatewayServer();
         gatewayServer.resetCallbackClient(
