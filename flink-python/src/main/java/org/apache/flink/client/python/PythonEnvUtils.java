@@ -233,10 +233,10 @@ final class PythonEnvUtils {
                     FileUtils.copy(pythonFile, targetPath, true);
                     if (sourceFileName.endsWith(".zip")) {
                         ZipUtils.extractZipFileWithPermissions(
-                                pythonFile.getPath(),
-                                targetPath.getPath());
+                                targetPath.getPath(),
+                                targetPath.getParent().getPath());
                         env.systemEnv.put("FLINK_USER_ZIP_" + pythonFile.getName().toUpperCase(),
-                                targetPath.getPath());
+                                targetPath.getParent().getPath());
                     }
 
                 } catch (Exception e) {
