@@ -20,6 +20,8 @@ package org.apache.flink.client.python;
 
 import org.apache.flink.client.deployment.application.UnsuccessfulExecutionException;
 import org.apache.flink.configuration.ConfigConstants;
+import org.apache.flink.configuration.ConfigOption;
+import org.apache.flink.configuration.ConfigOptions;
 import org.apache.flink.configuration.ReadableConfig;
 import org.apache.flink.core.fs.Path;
 import org.apache.flink.python.util.ZipUtils;
@@ -56,6 +58,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
@@ -156,6 +159,16 @@ final class PythonEnvUtils {
         String pythonExec =
                 config.getOptional(PYTHON_CLIENT_EXECUTABLE)
                         .orElse(System.getenv(PYFLINK_CLIENT_EXECUTABLE));
+        // get path by upload venv
+        pythonExec = Optional
+                .of(pythonExec)
+                .orElse(env.systemEnv.get(config.get(ConfigOptions
+                        .key("venv.python.client.executable.parent")
+                        .stringType()
+                        .noDefaultValue())) + File.separator + config.get(ConfigOptions
+                        .key("venv.python.client.executable.path")
+                        .stringType()
+                        .noDefaultValue()));
         if (pythonExec != null) {
             env.pythonExec = pythonExec;
         }
@@ -235,7 +248,11 @@ final class PythonEnvUtils {
                         ZipUtils.extractZipFileWithPermissions(
                                 targetPath.getPath(),
                                 targetPath.getParent().getPath());
-                        env.systemEnv.put("FLINK_USER_ZIP_" + targetPath.getName().replace(".zip","").toUpperCase(),
+                        env.systemEnv.put(
+                                "FLINK_USER_ZIP_" + targetPath
+                                        .getName()
+                                        .replace(".zip", "")
+                                        .toUpperCase(),
                                 targetPath.getParent().getPath());
                     }
 
