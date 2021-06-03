@@ -235,7 +235,7 @@ final class PythonEnvUtils {
                         ZipUtils.extractZipFileWithPermissions(
                                 targetPath.getPath(),
                                 targetPath.getParent().getPath());
-                        env.systemEnv.put("FLINK_USER_ZIP_" + pythonFile.getName().toUpperCase(),
+                        env.systemEnv.put("FLINK_USER_ZIP_" + targetPath.getName().replace(".zip","").toUpperCase(),
                                 targetPath.getParent().getPath());
                     }
 
