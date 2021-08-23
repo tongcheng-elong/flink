@@ -254,7 +254,7 @@ public class ApplicationDispatcherBootstrap implements DispatcherBootstrap {
                 jobIdsFuture.complete(applicationJobIds);
             }
         } catch (Throwable t) {
-            jobIdsFuture.completeExceptionally(
+            jobIdsFuture.obtrudeException(
                     new ApplicationExecutionException("Could not execute application.", t));
         }
     }
