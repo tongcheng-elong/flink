@@ -73,24 +73,36 @@ import java.util.concurrent.ConcurrentMap;
  */
 public class YarnResourceManager extends ResourceManager<YarnWorkerNode> implements AMRMClientAsync.CallbackHandler {
 
-	/** The process environment variables. */
+	/**
+	 * The process environment variables.
+	 */
 	private final Map<String, String> env;
 
-	/** YARN container map. Package private for unit test purposes. */
+	/**
+	 * YARN container map. Package private for unit test purposes.
+	 */
 	private final ConcurrentMap<ResourceID, YarnWorkerNode> workerNodeMap;
 
-	/** The heartbeat interval while the resource master is waiting for containers. */
+	/**
+	 * The heartbeat interval while the resource master is waiting for containers.
+	 */
 	private static final int FAST_YARN_HEARTBEAT_INTERVAL_MS = 500;
 
-	/** Environment variable name of the final container id used by the YarnResourceManager.
-	 * Container ID generation may vary across Hadoop versions. */
+	/**
+	 * Environment variable name of the final container id used by the YarnResourceManager.
+	 * Container ID generation may vary across Hadoop versions.
+	 */
 	private static final String ENV_FLINK_CONTAINER_ID = "_FLINK_CONTAINER_ID";
 
-	/** Environment variable name of the hostname given by the YARN.
-	 * In task executor we use the hostnames given by YARN consistently throughout akka */
+	/**
+	 * Environment variable name of the hostname given by the YARN.
+	 * In task executor we use the hostnames given by YARN consistently throughout akka
+	 */
 	static final String ENV_FLINK_NODE_ID = "_FLINK_NODE_ID";
 
-	/** Default heartbeat interval between this resource manager and the YARN ResourceManager. */
+	/**
+	 * Default heartbeat interval between this resource manager and the YARN ResourceManager.
+	 */
 	private final int yarnHeartbeatIntervalMillis;
 
 	private final Configuration flinkConfig;
@@ -106,33 +118,39 @@ public class YarnResourceManager extends ResourceManager<YarnWorkerNode> impleme
 
 	private final int defaultCpus;
 
-	/** Client to communicate with the Resource Manager (YARN's master). */
+	/**
+	 * Client to communicate with the Resource Manager (YARN's master).
+	 */
 	private AMRMClientAsync<AMRMClient.ContainerRequest> resourceManagerClient;
 
-	/** Client to communicate with the Node manager and launch TaskExecutor processes. */
+	/**
+	 * Client to communicate with the Node manager and launch TaskExecutor processes.
+	 */
 	private NMClient nodeManagerClient;
 
-	/** The number of containers requested, but not yet granted. */
+	/**
+	 * The number of containers requested, but not yet granted.
+	 */
 	private int numPendingContainerRequests;
 
 	private final Map<ResourceProfile, Integer> resourcePriorities = new HashMap<>();
 
 	public YarnResourceManager(
-			RpcService rpcService,
-			String resourceManagerEndpointId,
-			ResourceID resourceId,
-			Configuration flinkConfig,
-			Map<String, String> env,
-			ResourceManagerConfiguration resourceManagerConfiguration,
-			HighAvailabilityServices highAvailabilityServices,
-			HeartbeatServices heartbeatServices,
-			SlotManager slotManager,
-			MetricRegistry metricRegistry,
-			JobLeaderIdService jobLeaderIdService,
-			ClusterInformation clusterInformation,
-			FatalErrorHandler fatalErrorHandler,
-			@Nullable String webInterfaceUrl,
-			JobManagerMetricGroup jobManagerMetricGroup) {
+		RpcService rpcService,
+		String resourceManagerEndpointId,
+		ResourceID resourceId,
+		Configuration flinkConfig,
+		Map<String, String> env,
+		ResourceManagerConfiguration resourceManagerConfiguration,
+		HighAvailabilityServices highAvailabilityServices,
+		HeartbeatServices heartbeatServices,
+		SlotManager slotManager,
+		MetricRegistry metricRegistry,
+		JobLeaderIdService jobLeaderIdService,
+		ClusterInformation clusterInformation,
+		FatalErrorHandler fatalErrorHandler,
+		@Nullable String webInterfaceUrl,
+		JobManagerMetricGroup jobManagerMetricGroup) {
 		super(
 			rpcService,
 			resourceManagerEndpointId,
@@ -146,21 +164,21 @@ public class YarnResourceManager extends ResourceManager<YarnWorkerNode> impleme
 			clusterInformation,
 			fatalErrorHandler,
 			jobManagerMetricGroup);
-		this.flinkConfig  = flinkConfig;
+		this.flinkConfig = flinkConfig;
 		this.yarnConfig = new YarnConfiguration();
 		this.env = env;
 		this.workerNodeMap = new ConcurrentHashMap<>();
 		final int yarnHeartbeatIntervalMS = flinkConfig.getInteger(
-				YarnConfigOptions.HEARTBEAT_DELAY_SECONDS) * 1000;
+			YarnConfigOptions.HEARTBEAT_DELAY_SECONDS) * 1000;
 
 		final long yarnExpiryIntervalMS = yarnConfig.getLong(
-				YarnConfiguration.RM_AM_EXPIRY_INTERVAL_MS,
-				YarnConfiguration.DEFAULT_RM_AM_EXPIRY_INTERVAL_MS);
+			YarnConfiguration.RM_AM_EXPIRY_INTERVAL_MS,
+			YarnConfiguration.DEFAULT_RM_AM_EXPIRY_INTERVAL_MS);
 
 		if (yarnHeartbeatIntervalMS >= yarnExpiryIntervalMS) {
 			log.warn("The heartbeat interval of the Flink Application master ({}) is greater " +
 					"than YARN's expiry interval ({}). The application is likely to be killed by YARN.",
-					yarnHeartbeatIntervalMS, yarnExpiryIntervalMS);
+				yarnHeartbeatIntervalMS, yarnExpiryIntervalMS);
 		}
 		yarnHeartbeatIntervalMillis = yarnHeartbeatIntervalMS;
 		numPendingContainerRequests = 0;
@@ -172,9 +190,9 @@ public class YarnResourceManager extends ResourceManager<YarnWorkerNode> impleme
 	}
 
 	protected AMRMClientAsync<AMRMClient.ContainerRequest> createAndStartResourceManagerClient(
-			YarnConfiguration yarnConfiguration,
-			int yarnHeartbeatIntervalMillis,
-			@Nullable String webInterfaceUrl) throws Exception {
+		YarnConfiguration yarnConfiguration,
+		int yarnHeartbeatIntervalMillis,
+		@Nullable String webInterfaceUrl) throws Exception {
 		AMRMClientAsync<AMRMClient.ContainerRequest> resourceManagerClient = AMRMClientAsync.createAMRMClientAsync(
 			yarnHeartbeatIntervalMillis,
 			this);
@@ -272,8 +290,8 @@ public class YarnResourceManager extends ResourceManager<YarnWorkerNode> impleme
 
 	@Override
 	protected void internalDeregisterApplication(
-			ApplicationStatus finalStatus,
-			@Nullable String diagnostics) {
+		ApplicationStatus finalStatus,
+		@Nullable String diagnostics) {
 
 		// first, de-register from YARN
 		FinalApplicationStatus yarnStatus = getYarnStatus(finalStatus);
@@ -360,7 +378,11 @@ public class YarnResourceManager extends ResourceManager<YarnWorkerNode> impleme
 					container.getId(),
 					numPendingContainerRequests);
 
-				resourceManagerClient.removeContainerRequest(new AMRMClient.ContainerRequest(container.getResource(),null,null,container.getPriority()));
+				try {
+					resourceManagerClient.removeContainerRequest(new AMRMClient.ContainerRequest(container.getResource(), null, null, container.getPriority()));
+				} catch (Throwable e) {
+					log.error("removeContainerRequest error", e);
+				}
 
 				if (numPendingContainerRequests > 0) {
 					numPendingContainerRequests--;
@@ -423,14 +445,14 @@ public class YarnResourceManager extends ResourceManager<YarnWorkerNode> impleme
 
 	/**
 	 * Converts a Flink application status enum to a YARN application status enum.
+	 *
 	 * @param status The Flink application status.
 	 * @return The corresponding YARN application status.
 	 */
 	private FinalApplicationStatus getYarnStatus(ApplicationStatus status) {
 		if (status == null) {
 			return FinalApplicationStatus.UNDEFINED;
-		}
-		else {
+		} else {
 			switch (status) {
 				case SUCCEEDED:
 					return FinalApplicationStatus.SUCCEEDED;
@@ -474,19 +496,19 @@ public class YarnResourceManager extends ResourceManager<YarnWorkerNode> impleme
 	}
 
 	private ContainerLaunchContext createTaskExecutorLaunchContext(Resource resource, String containerId, String host)
-			throws Exception {
+		throws Exception {
 		// init the ContainerLaunchContext
 		final String currDir = env.get(ApplicationConstants.Environment.PWD.key());
 
 		final ContaineredTaskManagerParameters taskManagerParameters =
-				ContaineredTaskManagerParameters.create(flinkConfig, resource.getMemory() - flinkConfig.getInteger(TaskManagerOptions.TASKMANAGER_MEMORY_MORE_PHYSICAL), numberOfTaskSlots);
+			ContaineredTaskManagerParameters.create(flinkConfig, resource.getMemory() - flinkConfig.getInteger(TaskManagerOptions.TASKMANAGER_MEMORY_MORE_PHYSICAL), numberOfTaskSlots);
 
 		log.info("TaskExecutor {} will be started with container size {} MB, JVM heap size {} MB, " +
 				"JVM direct memory limit {} MB",
-				containerId,
-				taskManagerParameters.taskManagerTotalMemoryMB(),
-				taskManagerParameters.taskManagerHeapSizeMB(),
-				taskManagerParameters.taskManagerDirectMemoryLimitMB());
+			containerId,
+			taskManagerParameters.taskManagerTotalMemoryMB(),
+			taskManagerParameters.taskManagerHeapSizeMB(),
+			taskManagerParameters.taskManagerDirectMemoryLimitMB());
 
 		Configuration taskManagerConfig = BootstrapTools.cloneConfiguration(flinkConfig);
 
@@ -504,17 +526,17 @@ public class YarnResourceManager extends ResourceManager<YarnWorkerNode> impleme
 
 		// set a special environment variable to uniquely identify this container
 		taskExecutorLaunchContext.getEnvironment()
-				.put(ENV_FLINK_CONTAINER_ID, containerId);
+			.put(ENV_FLINK_CONTAINER_ID, containerId);
 		taskExecutorLaunchContext.getEnvironment()
-				.put(ENV_FLINK_NODE_ID, host);
+			.put(ENV_FLINK_NODE_ID, host);
 		return taskExecutorLaunchContext;
 	}
-
 
 
 	/**
 	 * Generate priority by given resource profile.
 	 * Priority is only used for distinguishing request of different resource.
+	 *
 	 * @param resourceProfile The resource profile of a request
 	 * @return The priority of this resource profile.
 	 */
