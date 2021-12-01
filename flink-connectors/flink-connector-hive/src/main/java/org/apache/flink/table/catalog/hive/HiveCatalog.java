@@ -713,7 +713,7 @@ public class HiveCatalog extends AbstractCatalog {
                                         .containsKey(FLINK_PROPERTY_PREFIX + CONNECTOR_TYPE);
             }
             // for hive table, we add the connector property
-            if (isHiveTable) {
+            if (isHiveTable && !table.getParameters().containsKey(CONNECTOR.key())) {
                 table.getParameters().put(CONNECTOR.key(), IDENTIFIER);
             }
             return table;
