@@ -114,7 +114,7 @@ public class JsonRowDataDeserializationSchema implements DeserializationSchema<R
     }
 
     public JsonNode deserializeToJsonNode(byte[] message) throws IOException {
-        return objectMapper.readTree(message);
+        return objectMapper.readTree( new String(message, "UTF-8"));
     }
 
     public RowData convertToRowData(JsonNode message) {
