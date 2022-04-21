@@ -57,6 +57,7 @@ import java.time.temporal.TemporalQueries;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
+import java.util.TreeMap;
 
 import static java.time.format.DateTimeFormatter.ISO_LOCAL_DATE;
 import static org.apache.flink.formats.common.TimeFormats.ISO8601_TIMESTAMP_FORMAT;
@@ -77,15 +78,19 @@ public class JsonToRowDataConverters implements Serializable {
     /** Flag indicating whether to ignore invalid fields/rows (default: throw an exception). */
     private final boolean ignoreParseErrors;
 
+    private final boolean caseInsensitive;
+
     /** Timestamp format specification which is used to parse timestamp. */
     private final TimestampFormat timestampFormat;
 
     public JsonToRowDataConverters(
             boolean failOnMissingField,
             boolean ignoreParseErrors,
+            boolean caseInsensitive,
             TimestampFormat timestampFormat) {
         this.failOnMissingField = failOnMissingField;
         this.ignoreParseErrors = ignoreParseErrors;
+        this.caseInsensitive = caseInsensitive;
         this.timestampFormat = timestampFormat;
     }
 
@@ -220,12 +225,16 @@ public class JsonToRowDataConverters implements Serializable {
 
     private TimestampData convertToTimestamp(JsonNode jsonNode) {
         TemporalAccessor parsedTimestamp;
+        String timestampStr = jsonNode.asText();
+        if(timestampStr.equals("0000-00-00 00:00:00")){
+            timestampStr = "1970-01-01 00:00:00";
+        }
         switch (timestampFormat) {
             case SQL:
-                parsedTimestamp = SQL_TIMESTAMP_FORMAT.parse(jsonNode.asText());
+                parsedTimestamp = SQL_TIMESTAMP_FORMAT.parse(timestampStr);
                 break;
             case ISO_8601:
-                parsedTimestamp = ISO8601_TIMESTAMP_FORMAT.parse(jsonNode.asText());
+                parsedTimestamp = ISO8601_TIMESTAMP_FORMAT.parse(timestampStr);
                 break;
             default:
                 throw new TableException(
@@ -342,10 +351,21 @@ public class JsonToRowDataConverters implements Serializable {
 
         return jsonNode -> {
             ObjectNode node = (ObjectNode) jsonNode;
+            Map<String, String> caseInactiveMap = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+            if (caseInsensitive) {
+                Iterator<String> jsonFieldNames = node.fieldNames();
+                while (jsonFieldNames.hasNext()) {
+                    String curFieldName = jsonFieldNames.next();
+                    caseInactiveMap.put(curFieldName, curFieldName);
+                }
+            }
             int arity = fieldNames.length;
             GenericRowData row = new GenericRowData(arity);
             for (int i = 0; i < arity; i++) {
                 String fieldName = fieldNames[i];
+                if (caseInsensitive) {
+                    fieldName = caseInactiveMap.get(fieldName);
+                }
                 JsonNode field = node.get(fieldName);
                 try {
                     Object convertedField = convertField(fieldConverters[i], fieldName, field);

@@ -121,6 +121,7 @@ public final class TurboMqJsonDeserializationSchema implements DeserializationSc
                         false, // ignoreParseErrors already contains the functionality of
                         // failOnMissingField
                         ignoreParseErrors,
+                        true,
                         timestampFormat);
         this.hasMetadata = readableMetadata.size() > 0;
         this.metadataConverters =

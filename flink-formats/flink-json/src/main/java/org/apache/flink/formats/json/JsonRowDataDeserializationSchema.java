@@ -86,7 +86,32 @@ public class JsonRowDataDeserializationSchema implements DeserializationSchema<R
         this.failOnMissingField = failOnMissingField;
         this.ignoreParseErrors = ignoreParseErrors;
         this.runtimeConverter =
-                new JsonToRowDataConverters(failOnMissingField, ignoreParseErrors, timestampFormat)
+                new JsonToRowDataConverters(failOnMissingField, ignoreParseErrors, false, timestampFormat)
+                        .createConverter(checkNotNull(rowType));
+        this.timestampFormat = timestampFormat;
+        boolean hasDecimalType =
+                LogicalTypeChecks.hasNested(rowType, t -> t instanceof DecimalType);
+        if (hasDecimalType) {
+            objectMapper.enable(DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS);
+        }
+        objectMapper.configure(JsonReadFeature.ALLOW_UNESCAPED_CONTROL_CHARS.mappedFeature(), true);
+    }
+    public JsonRowDataDeserializationSchema(
+            RowType rowType,
+            TypeInformation<RowData> resultTypeInfo,
+            boolean failOnMissingField,
+            boolean ignoreParseErrors,
+            boolean caseInsensitive,
+            TimestampFormat timestampFormat) {
+        if (ignoreParseErrors && failOnMissingField) {
+            throw new IllegalArgumentException(
+                    "JSON format doesn't support failOnMissingField and ignoreParseErrors are both enabled.");
+        }
+        this.resultTypeInfo = checkNotNull(resultTypeInfo);
+        this.failOnMissingField = failOnMissingField;
+        this.ignoreParseErrors = ignoreParseErrors;
+        this.runtimeConverter =
+                new JsonToRowDataConverters(failOnMissingField, ignoreParseErrors, caseInsensitive, timestampFormat)
                         .createConverter(checkNotNull(rowType));
         this.timestampFormat = timestampFormat;
         boolean hasDecimalType =
