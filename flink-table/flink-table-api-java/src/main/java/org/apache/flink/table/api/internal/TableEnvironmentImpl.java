@@ -421,14 +421,30 @@ public class TableEnvironmentImpl implements TableEnvironmentInternal {
         createFunction(path, functionClass, false);
     }
 
+    public void createFunction(
+            String path,
+            Class<? extends UserDefinedFunction> functionClass,
+            Map<String, String> properties) {
+        createFunction(path, functionClass, properties, false);
+    }
+
     @Override
     public void createFunction(
             String path,
             Class<? extends UserDefinedFunction> functionClass,
             boolean ignoreIfExists) {
+        createFunction(path, functionClass, new HashMap<>(), ignoreIfExists);
+    }
+
+    @Override
+    public void createFunction(
+            String path,
+            Class<? extends UserDefinedFunction> functionClass,
+            Map<String, String> functionProperties,
+            boolean ignoreIfExists) {
         final UnresolvedIdentifier unresolvedIdentifier = getParser().parseIdentifier(path);
         functionCatalog.registerCatalogFunction(
-                unresolvedIdentifier, functionClass, ignoreIfExists);
+                unresolvedIdentifier, functionClass, functionProperties, ignoreIfExists);
     }
 
     @Override

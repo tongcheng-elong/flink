@@ -34,7 +34,9 @@ import org.junit.runners.Parameterized.Parameter;
 import javax.annotation.Nullable;
 
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import static org.apache.flink.core.testutils.FlinkMatchers.containsCause;
@@ -223,6 +225,11 @@ public class UserDefinedFunctionHelperTest {
         @Override
         public FunctionLanguage getFunctionLanguage() {
             return language;
+        }
+
+        @Override
+        public Map<String, String> getFunctionProperties() {
+            return new HashMap<>();
         }
     }
 

@@ -86,7 +86,8 @@ public class JsonRowDataDeserializationSchema implements DeserializationSchema<R
         this.failOnMissingField = failOnMissingField;
         this.ignoreParseErrors = ignoreParseErrors;
         this.runtimeConverter =
-                new JsonToRowDataConverters(failOnMissingField, ignoreParseErrors, false, timestampFormat)
+                new JsonToRowDataConverters(
+                                failOnMissingField, ignoreParseErrors, false, timestampFormat)
                         .createConverter(checkNotNull(rowType));
         this.timestampFormat = timestampFormat;
         boolean hasDecimalType =
@@ -96,6 +97,7 @@ public class JsonRowDataDeserializationSchema implements DeserializationSchema<R
         }
         objectMapper.configure(JsonReadFeature.ALLOW_UNESCAPED_CONTROL_CHARS.mappedFeature(), true);
     }
+
     public JsonRowDataDeserializationSchema(
             RowType rowType,
             TypeInformation<RowData> resultTypeInfo,
@@ -111,7 +113,11 @@ public class JsonRowDataDeserializationSchema implements DeserializationSchema<R
         this.failOnMissingField = failOnMissingField;
         this.ignoreParseErrors = ignoreParseErrors;
         this.runtimeConverter =
-                new JsonToRowDataConverters(failOnMissingField, ignoreParseErrors, caseInsensitive, timestampFormat)
+                new JsonToRowDataConverters(
+                                failOnMissingField,
+                                ignoreParseErrors,
+                                caseInsensitive,
+                                timestampFormat)
                         .createConverter(checkNotNull(rowType));
         this.timestampFormat = timestampFormat;
         boolean hasDecimalType =
@@ -139,7 +145,7 @@ public class JsonRowDataDeserializationSchema implements DeserializationSchema<R
     }
 
     public JsonNode deserializeToJsonNode(byte[] message) throws IOException {
-        return objectMapper.readTree( new String(message, "UTF-8"));
+        return objectMapper.readTree(new String(message, "UTF-8"));
     }
 
     public RowData convertToRowData(JsonNode message) {

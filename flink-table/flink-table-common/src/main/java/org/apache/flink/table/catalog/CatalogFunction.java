@@ -18,6 +18,7 @@
 
 package org.apache.flink.table.catalog;
 
+import java.util.Map;
 import java.util.Optional;
 
 /** Interface for a function in a catalog. */
@@ -64,4 +65,11 @@ public interface CatalogFunction {
      * @return the language type of the function definition
      */
     FunctionLanguage getFunctionLanguage();
+
+    /**
+     * get self-defined properties.
+     *
+     * @return function properties when user define
+     */
+    Map<String, String> getFunctionProperties();
 }

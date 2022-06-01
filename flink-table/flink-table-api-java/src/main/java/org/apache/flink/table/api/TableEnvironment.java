@@ -36,6 +36,7 @@ import org.apache.flink.table.types.AbstractDataType;
 
 import java.io.Serializable;
 import java.util.Arrays;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -514,6 +515,22 @@ public interface TableEnvironment {
      * <p>Compared to system functions with a globally defined name, catalog functions are always
      * (implicitly or explicitly) identified by a catalog and database.
      *
+     * @param path he path under which the function will be registered. See also the {@link
+     *     TableEnvironment} class description for the format of the path.
+     * @param functionClass The function class containing the implementation.
+     * @param functionProperties The function properties which user define.
+     */
+    void createFunction(
+            String path,
+            Class<? extends UserDefinedFunction> functionClass,
+            Map<String, String> functionProperties);
+
+    /**
+     * Registers a {@link UserDefinedFunction} class as a catalog function in the given path.
+     *
+     * <p>Compared to system functions with a globally defined name, catalog functions are always
+     * (implicitly or explicitly) identified by a catalog and database.
+     *
      * @param path The path under which the function will be registered. See also the {@link
      *     TableEnvironment} class description for the format of the path.
      * @param functionClass The function class containing the implementation.
@@ -523,6 +540,25 @@ public interface TableEnvironment {
     void createFunction(
             String path,
             Class<? extends UserDefinedFunction> functionClass,
+            boolean ignoreIfExists);
+
+    /**
+     * Registers a {@link UserDefinedFunction} class as a catalog function in the given path.
+     *
+     * <p>Compared to system functions with a globally defined name, catalog functions are always
+     * (implicitly or explicitly) identified by a catalog and database.
+     *
+     * @param path The path under which the function will be registered. See also the {@link
+     *     TableEnvironment} class description for the format of the path.
+     * @param functionClass The function class containing the implementation.
+     * @param functionProperties The function properties which user define.
+     * @param ignoreIfExists If a function exists under the given path and this flag is set, no
+     *     operation is executed. An exception is thrown otherwise.
+     */
+    void createFunction(
+            String path,
+            Class<? extends UserDefinedFunction> functionClass,
+            Map<String, String> functionProperties,
             boolean ignoreIfExists);
 
     /**

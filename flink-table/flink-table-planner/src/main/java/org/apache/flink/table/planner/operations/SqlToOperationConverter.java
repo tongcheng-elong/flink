@@ -547,10 +547,13 @@ public class SqlToOperationConverter {
                     parseLanguage(sqlCreateFunction.getFunctionLanguage()));
         } else {
             FunctionLanguage language = parseLanguage(sqlCreateFunction.getFunctionLanguage());
+            Map<String, String> functionProperties =
+                    parseFunctionProperties(sqlCreateFunction.getPropertyList());
             CatalogFunction catalogFunction =
                     new CatalogFunctionImpl(
                             sqlCreateFunction.getFunctionClassName().getValueAs(String.class),
-                            language);
+                            language,
+                            functionProperties);
             ObjectIdentifier identifier = catalogManager.qualifyIdentifier(unresolvedIdentifier);
 
             return new CreateCatalogFunctionOperation(
@@ -619,6 +622,16 @@ public class SqlToOperationConverter {
         }
 
         return language;
+    }
+
+    private Map<String, String> parseFunctionProperties(SqlNodeList propertyList) {
+        Map<String, String> functionProperties = new HashMap<>();
+        for (SqlNode sqlNode : propertyList) {
+            functionProperties.put(
+                    ((SqlTableOption) sqlNode).getKeyString(),
+                    ((SqlTableOption) sqlNode).getValueString());
+        }
+        return functionProperties;
     }
 
     /** Convert insert into statement. */

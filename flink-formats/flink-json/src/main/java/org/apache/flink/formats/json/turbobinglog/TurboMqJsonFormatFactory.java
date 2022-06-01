@@ -68,7 +68,8 @@ public class TurboMqJsonFormatFactory
 
         final boolean ignoreParseErrors = formatOptions.get(IGNORE_PARSE_ERRORS);
 
-        final TimestampFormat timestampFormat = JsonFormatOptionsUtil.getTimestampFormat(formatOptions);
+        final TimestampFormat timestampFormat =
+                JsonFormatOptionsUtil.getTimestampFormat(formatOptions);
 
         return new TurboMqJsonDecodingFormat(ignoreParseErrors, timestampFormat);
     }
@@ -84,7 +85,8 @@ public class TurboMqJsonFormatFactory
                 formatOptions.get(ENCODE_DECIMAL_AS_PLAIN_NUMBER);
 
         TimestampFormat timestampFormat = JsonFormatOptionsUtil.getTimestampFormat(formatOptions);
-        JsonFormatOptions.MapNullKeyMode mapNullKeyMode = JsonFormatOptionsUtil.getMapNullKeyMode(formatOptions);
+        JsonFormatOptions.MapNullKeyMode mapNullKeyMode =
+                JsonFormatOptionsUtil.getMapNullKeyMode(formatOptions);
         String mapNullKeyLiteral = formatOptions.get(JSON_MAP_NULL_KEY_LITERAL);
 
         return new EncodingFormat<SerializationSchema<RowData>>() {
@@ -104,7 +106,11 @@ public class TurboMqJsonFormatFactory
                     DynamicTableSink.Context context, DataType consumedDataType) {
                 final RowType rowType = (RowType) consumedDataType.getLogicalType();
                 return new TurboMqJsonSerializationSchema(
-                        rowType, timestampFormat, mapNullKeyMode, mapNullKeyLiteral,encodeDecimalAsPlainNumber);
+                        rowType,
+                        timestampFormat,
+                        mapNullKeyMode,
+                        mapNullKeyLiteral,
+                        encodeDecimalAsPlainNumber);
             }
         };
     }

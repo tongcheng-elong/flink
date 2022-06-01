@@ -46,9 +46,7 @@ public class TurboMqJsonSerializationSchema implements SerializationSchema<RowDa
     private static final StringData OP_INSERT = StringData.fromString("c"); // insert
     private static final StringData OP_DELETE = StringData.fromString("d"); // delete
 
-    /**
-     * The serializer to serialize Debezium JSON data. *
-     */
+    /** The serializer to serialize Debezium JSON data. * */
     private final JsonRowDataSerializationSchema jsonSerializer;
 
     private transient GenericRowData genericRowData;
@@ -73,9 +71,9 @@ public class TurboMqJsonSerializationSchema implements SerializationSchema<RowDa
         // but we don't need them.
         return (RowType)
                 DataTypes.ROW(
-                        DataTypes.FIELD("before", databaseSchema),
-                        DataTypes.FIELD("after", databaseSchema),
-                        DataTypes.FIELD("op", DataTypes.STRING()))
+                                DataTypes.FIELD("before", databaseSchema),
+                                DataTypes.FIELD("after", databaseSchema),
+                                DataTypes.FIELD("op", DataTypes.STRING()))
                         .getLogicalType();
     }
 

@@ -34,6 +34,7 @@ import org.junit.Before;
 import org.junit.Test;
 
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Optional;
 import java.util.Set;
@@ -293,14 +294,14 @@ public class FunctionCatalogTest {
     public void testCatalogFunction() {
         // register first time
         functionCatalog.registerCatalogFunction(
-                PARTIAL_UNRESOLVED_IDENTIFIER, FUNCTION_1.getClass(), false);
+                PARTIAL_UNRESOLVED_IDENTIFIER, FUNCTION_1.getClass(), new HashMap<>(), false);
         assertThat(
                 functionCatalog.lookupFunction(FULL_UNRESOLVED_IDENTIFIER),
                 returnsFunction(FunctionIdentifier.of(IDENTIFIER), FUNCTION_1));
 
         // register second time lenient
         functionCatalog.registerCatalogFunction(
-                PARTIAL_UNRESOLVED_IDENTIFIER, FUNCTION_2.getClass(), true);
+                PARTIAL_UNRESOLVED_IDENTIFIER, FUNCTION_2.getClass(), new HashMap<>(), true);
         assertThat(
                 functionCatalog.lookupFunction(FULL_UNRESOLVED_IDENTIFIER),
                 returnsFunction(FunctionIdentifier.of(IDENTIFIER), FUNCTION_1));
@@ -308,7 +309,7 @@ public class FunctionCatalogTest {
         // register second time not lenient
         try {
             functionCatalog.registerCatalogFunction(
-                    PARTIAL_UNRESOLVED_IDENTIFIER, FUNCTION_2.getClass(), false);
+                    PARTIAL_UNRESOLVED_IDENTIFIER, FUNCTION_2.getClass(), new HashMap<>(), false);
             fail();
         } catch (ValidationException e) {
             assertThat(
@@ -348,7 +349,10 @@ public class FunctionCatalogTest {
         // register invalid
         try {
             functionCatalog.registerCatalogFunction(
-                    PARTIAL_UNRESOLVED_IDENTIFIER, FUNCTION_INVALID.getClass(), false);
+                    PARTIAL_UNRESOLVED_IDENTIFIER,
+                    FUNCTION_INVALID.getClass(),
+                    new HashMap<>(),
+                    false);
             fail();
         } catch (ValidationException e) {
             assertThat(
@@ -365,7 +369,7 @@ public class FunctionCatalogTest {
     public void testTemporaryCatalogFunction() {
         // register permanent function
         functionCatalog.registerCatalogFunction(
-                PARTIAL_UNRESOLVED_IDENTIFIER, FUNCTION_2.getClass(), false);
+                PARTIAL_UNRESOLVED_IDENTIFIER, FUNCTION_2.getClass(), new HashMap<>(), false);
         assertThat(
                 functionCatalog.lookupFunction(FULL_UNRESOLVED_IDENTIFIER),
                 returnsFunction(FunctionIdentifier.of(IDENTIFIER), FUNCTION_2));
@@ -397,7 +401,7 @@ public class FunctionCatalogTest {
         // registering catalog functions is not possible in this state
         try {
             functionCatalog.registerCatalogFunction(
-                    PARTIAL_UNRESOLVED_IDENTIFIER, FUNCTION_2.getClass(), false);
+                    PARTIAL_UNRESOLVED_IDENTIFIER, FUNCTION_2.getClass(), new HashMap<>(), false);
             fail();
         } catch (ValidationException e) {
             assertThat(
@@ -481,7 +485,7 @@ public class FunctionCatalogTest {
     public void testUninstantiatedTemporaryCatalogFunction() {
         // register permanent function
         functionCatalog.registerCatalogFunction(
-                PARTIAL_UNRESOLVED_IDENTIFIER, FUNCTION_2.getClass(), false);
+                PARTIAL_UNRESOLVED_IDENTIFIER, FUNCTION_2.getClass(), new HashMap<>(), false);
         assertThat(
                 functionCatalog.lookupFunction(FULL_UNRESOLVED_IDENTIFIER),
                 returnsFunction(FunctionIdentifier.of(IDENTIFIER), FUNCTION_2));

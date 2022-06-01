@@ -37,6 +37,7 @@ import org.apache.flink.table.catalog.CatalogManager;
 import org.apache.flink.table.catalog.CatalogTable;
 import org.apache.flink.table.catalog.CatalogTableImpl;
 import org.apache.flink.table.catalog.FunctionCatalog;
+import org.apache.flink.table.catalog.FunctionLanguage;
 import org.apache.flink.table.catalog.GenericInMemoryCatalog;
 import org.apache.flink.table.catalog.ObjectIdentifier;
 import org.apache.flink.table.catalog.ObjectPath;
@@ -69,6 +70,7 @@ import org.apache.flink.table.operations.ddl.AlterTableAddConstraintOperation;
 import org.apache.flink.table.operations.ddl.AlterTableDropConstraintOperation;
 import org.apache.flink.table.operations.ddl.AlterTableOptionsOperation;
 import org.apache.flink.table.operations.ddl.AlterTableRenameOperation;
+import org.apache.flink.table.operations.ddl.CreateCatalogFunctionOperation;
 import org.apache.flink.table.operations.ddl.CreateDatabaseOperation;
 import org.apache.flink.table.operations.ddl.CreateTableOperation;
 import org.apache.flink.table.operations.ddl.CreateViewOperation;
@@ -607,6 +609,29 @@ public class SqlToOperationConverterTest {
         assert node instanceof SqlRichExplain;
         Operation operation = SqlToOperationConverter.convert(planner, catalogManager, node).get();
         assert operation instanceof ExplainOperation;
+    }
+
+    @Test
+    public void testCreateFunction() {
+        String sql =
+                "CREATE FUNCTION test_udf AS 'org.apache.flink.function.function1' "
+                        + "LANGUAGE JAVA WITH ("
+                        + "'outPutType' = 'ROW(id INT, name STRING)') ";
+        final FlinkPlannerImpl planner = getPlannerBySqlDialect(SqlDialect.DEFAULT);
+        Operation operation = parse(sql, planner, getParserBySqlDialect(SqlDialect.DEFAULT));
+        assert operation instanceof CreateCatalogFunctionOperation;
+        CatalogFunction actualFunction =
+                ((CreateCatalogFunctionOperation) operation).getCatalogFunction();
+        assert operation
+                .asSummaryString()
+                .equals(
+                        "CREATE CATALOG FUNCTION: (catalogFunction: [Optional[This is a user-defined function]], "
+                                + "identifier: [`builtin`.`default`.`test_udf`], ignoreIfExists: [false], isTemporary: [false])");
+
+        assert actualFunction.getClassName().equals("org.apache.fink.function.function1");
+        assert actualFunction.getFunctionLanguage().equals(FunctionLanguage.JAVA);
+        assert actualFunction.getFunctionProperties().size() == 2;
+        System.out.println(111);
     }
 
     @Test

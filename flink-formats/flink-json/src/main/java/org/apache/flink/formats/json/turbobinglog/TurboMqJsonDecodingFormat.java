@@ -42,12 +42,10 @@ import java.util.Map;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-/**
- * {@link DecodingFormat} for Debezium using JSON encoding.
- */
+/** {@link DecodingFormat} for Debezium using JSON encoding. */
 public class TurboMqJsonDecodingFormat implements DecodingFormat<DeserializationSchema<RowData>> {
 
-    public final static String BINGLOGFORMATPREFIX = "binlog_";
+    public static final String BINGLOGFORMATPREFIX = "binlog_";
     // --------------------------------------------------------------------------------------------
     // Mutable attributes
     // --------------------------------------------------------------------------------------------
@@ -71,23 +69,25 @@ public class TurboMqJsonDecodingFormat implements DecodingFormat<Deserialization
 
     private static DataType extraRealDataType(DataType dataType) {
         final RowType rowType = (RowType) dataType.getLogicalType();
-        return TypeConversions.fromLogicalToDataType(new RowType(false, rowType.getFields()
-                .stream()
-                .filter(s -> !s.getName().startsWith(BINGLOGFORMATPREFIX))
-                .collect(Collectors.toList())));
+        return TypeConversions.fromLogicalToDataType(
+                new RowType(
+                        false,
+                        rowType.getFields().stream()
+                                .filter(s -> !s.getName().startsWith(BINGLOGFORMATPREFIX))
+                                .collect(Collectors.toList())));
     }
-
 
     private static List<ReadableMetadata> extraDataTypeMeta(DataType dataType) {
         final RowType rowType = (RowType) dataType.getLogicalType();
-        return rowType.getFields()
-                .stream()
+        return rowType.getFields().stream()
                 .filter(s -> s.getName().startsWith(BINGLOGFORMATPREFIX))
                 .map(s -> s.getName())
-                .map(k -> Stream.of(ReadableMetadata.values())
-                        .filter(rm -> rm.key.equals(k))
-                        .findFirst()
-                        .orElseThrow(IllegalStateException::new))
+                .map(
+                        k ->
+                                Stream.of(ReadableMetadata.values())
+                                        .filter(rm -> rm.key.equals(k))
+                                        .findFirst()
+                                        .orElseThrow(IllegalStateException::new))
                 .collect(Collectors.toList());
     }
 
@@ -138,15 +138,13 @@ public class TurboMqJsonDecodingFormat implements DecodingFormat<Deserialization
     public ChangelogMode getChangelogMode() {
         return ChangelogMode.newBuilder()
                 .addContainedKind(RowKind.INSERT)
-//                .addContainedKind(RowKind.UPDATE_BEFORE)
-//                .addContainedKind(RowKind.UPDATE_AFTER)
-//                .addContainedKind(RowKind.DELETE)
+                //                .addContainedKind(RowKind.UPDATE_BEFORE)
+                //                .addContainedKind(RowKind.UPDATE_AFTER)
+                //                .addContainedKind(RowKind.DELETE)
                 .build();
     }
 
-    /**
-     * List of metadata that can be read with this format.
-     */
+    /** List of metadata that can be read with this format. */
     enum ReadableMetadata {
         SCHEMA(
                 "binlog_schema",

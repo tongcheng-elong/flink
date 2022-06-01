@@ -23,16 +23,16 @@ import org.apache.flink.configuration.ReadableConfig;
 import org.apache.flink.formats.json.JsonFormatOptions;
 import org.apache.flink.formats.json.JsonFormatOptionsUtil;
 
-/**
- * Option utils for debezium-json format.
- */
+/** Option utils for debezium-json format. */
 public class TurboMqJsonOptions {
 
-    public static final ConfigOption<Boolean> IGNORE_PARSE_ERRORS = JsonFormatOptions.IGNORE_PARSE_ERRORS;
+    public static final ConfigOption<Boolean> IGNORE_PARSE_ERRORS =
+            JsonFormatOptions.IGNORE_PARSE_ERRORS;
 
     public static final ConfigOption<String> TIMESTAMP_FORMAT = JsonFormatOptions.TIMESTAMP_FORMAT;
 
-    public static final ConfigOption<String> JSON_MAP_NULL_KEY_MODE = JsonFormatOptions.MAP_NULL_KEY_MODE;
+    public static final ConfigOption<String> JSON_MAP_NULL_KEY_MODE =
+            JsonFormatOptions.MAP_NULL_KEY_MODE;
 
     public static final ConfigOption<String> JSON_MAP_NULL_KEY_LITERAL =
             JsonFormatOptions.MAP_NULL_KEY_LITERAL;
@@ -41,16 +41,12 @@ public class TurboMqJsonOptions {
     // Validation
     // --------------------------------------------------------------------------------------------
 
-    /**
-     * Validator for debezium decoding format.
-     */
+    /** Validator for debezium decoding format. */
     public static void validateDecodingFormatOptions(ReadableConfig tableOptions) {
         JsonFormatOptionsUtil.validateDecodingFormatOptions(tableOptions);
     }
 
-    /**
-     * Validator for debezium encoding format.
-     */
+    /** Validator for debezium encoding format. */
     public static void validateEncodingFormatOptions(ReadableConfig tableOptions) {
         JsonFormatOptionsUtil.validateEncodingFormatOptions(tableOptions);
     }

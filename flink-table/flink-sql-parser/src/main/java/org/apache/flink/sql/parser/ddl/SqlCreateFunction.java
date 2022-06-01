@@ -23,6 +23,7 @@ import org.apache.calcite.sql.SqlCreate;
 import org.apache.calcite.sql.SqlIdentifier;
 import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.sql.SqlNode;
+import org.apache.calcite.sql.SqlNodeList;
 import org.apache.calcite.sql.SqlOperator;
 import org.apache.calcite.sql.SqlSpecialOperator;
 import org.apache.calcite.sql.SqlWriter;
@@ -47,6 +48,8 @@ public class SqlCreateFunction extends SqlCreate {
 
     private final String functionLanguage;
 
+    private final SqlNodeList propertyList;
+
     private final boolean isTemporary;
 
     private final boolean isSystemFunction;
@@ -56,12 +59,14 @@ public class SqlCreateFunction extends SqlCreate {
             SqlIdentifier functionIdentifier,
             SqlCharStringLiteral functionClassName,
             String functionLanguage,
+            SqlNodeList propertyList,
             boolean ifNotExists,
             boolean isTemporary,
             boolean isSystemFunction) {
         super(OPERATOR, pos, false, ifNotExists);
         this.functionIdentifier = requireNonNull(functionIdentifier);
         this.functionClassName = requireNonNull(functionClassName);
+        this.propertyList = propertyList;
         this.isSystemFunction = isSystemFunction;
         this.isTemporary = isTemporary;
         this.functionLanguage = functionLanguage;
@@ -98,6 +103,23 @@ public class SqlCreateFunction extends SqlCreate {
             writer.keyword("LANGUAGE");
             writer.keyword(functionLanguage);
         }
+        String with = "WITH";
+        if (this.propertyList.size() > 0) {
+            writer.keyword(with);
+            SqlWriter.Frame withFrame = writer.startList("(", ")");
+            for (SqlNode property : propertyList) {
+                printIndent(writer);
+                property.unparse(writer, leftPrec, rightPrec);
+            }
+            writer.newlineAndIndent();
+            writer.endList(withFrame);
+        }
+    }
+
+    protected void printIndent(SqlWriter writer) {
+        writer.sep(",", false);
+        writer.newlineAndIndent();
+        writer.print("  ");
     }
 
     public boolean isIfNotExists() {
@@ -118,6 +140,10 @@ public class SqlCreateFunction extends SqlCreate {
 
     public String getFunctionLanguage() {
         return this.functionLanguage;
+    }
+
+    public SqlNodeList getPropertyList() {
+        return propertyList;
     }
 
     public String[] getFunctionIdentifier() {

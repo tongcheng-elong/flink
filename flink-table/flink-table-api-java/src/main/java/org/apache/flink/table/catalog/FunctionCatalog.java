@@ -43,6 +43,7 @@ import org.apache.flink.table.functions.UserDefinedFunctionHelper;
 import org.apache.flink.table.module.ModuleManager;
 import org.apache.flink.util.Preconditions;
 
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -180,6 +181,7 @@ public final class FunctionCatalog {
     public void registerCatalogFunction(
             UnresolvedIdentifier unresolvedIdentifier,
             Class<? extends UserDefinedFunction> functionClass,
+            Map<String, String> functionProperties,
             boolean ignoreIfExists) {
         final ObjectIdentifier identifier = catalogManager.qualifyIdentifier(unresolvedIdentifier);
         final ObjectIdentifier normalizedIdentifier =
@@ -224,7 +226,8 @@ public final class FunctionCatalog {
         }
 
         final CatalogFunction catalogFunction =
-                new CatalogFunctionImpl(functionClass.getName(), FunctionLanguage.JAVA);
+                new CatalogFunctionImpl(
+                        functionClass.getName(), FunctionLanguage.JAVA, functionProperties);
         try {
             catalog.createFunction(path, catalogFunction, ignoreIfExists);
         } catch (Throwable t) {
@@ -709,6 +712,11 @@ public final class FunctionCatalog {
         @Override
         public FunctionLanguage getFunctionLanguage() {
             return FunctionLanguage.JAVA;
+        }
+
+        @Override
+        public Map<String, String> getFunctionProperties() {
+            return new HashMap<>();
         }
 
         public FunctionDefinition getDefinition() {

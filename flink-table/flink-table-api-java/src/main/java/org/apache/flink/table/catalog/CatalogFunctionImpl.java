@@ -21,6 +21,8 @@ package org.apache.flink.table.catalog;
 import org.apache.flink.table.functions.UserDefinedFunction;
 import org.apache.flink.util.StringUtils;
 
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Optional;
 
 import static org.apache.flink.util.Preconditions.checkArgument;
@@ -30,17 +32,26 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
 public class CatalogFunctionImpl implements CatalogFunction {
     private final String className; // Fully qualified class name of the function
     private final FunctionLanguage functionLanguage;
+    private final Map<String, String> functionProperties;
 
     public CatalogFunctionImpl(String className) {
         this(className, FunctionLanguage.JAVA);
     }
 
     public CatalogFunctionImpl(String className, FunctionLanguage functionLanguage) {
+        this(className, functionLanguage, new HashMap<>());
+    }
+
+    public CatalogFunctionImpl(
+            String className,
+            FunctionLanguage functionLanguage,
+            Map<String, String> functionProperties) {
         checkArgument(
                 !StringUtils.isNullOrWhitespaceOnly(className),
                 "className cannot be null or empty");
         this.className = className;
         this.functionLanguage = checkNotNull(functionLanguage, "functionLanguage cannot be null");
+        this.functionProperties = functionProperties;
     }
 
     @Override
@@ -50,7 +61,7 @@ public class CatalogFunctionImpl implements CatalogFunction {
 
     @Override
     public CatalogFunction copy() {
-        return new CatalogFunctionImpl(getClassName(), functionLanguage);
+        return new CatalogFunctionImpl(getClassName(), functionLanguage, functionProperties);
     }
 
     @Override
@@ -83,6 +94,11 @@ public class CatalogFunctionImpl implements CatalogFunction {
     @Override
     public FunctionLanguage getFunctionLanguage() {
         return functionLanguage;
+    }
+
+    @Override
+    public Map<String, String> getFunctionProperties() {
+        return functionProperties;
     }
 
     @Override

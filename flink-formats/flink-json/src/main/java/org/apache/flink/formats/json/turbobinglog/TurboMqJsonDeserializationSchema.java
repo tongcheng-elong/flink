@@ -25,7 +25,6 @@ import org.apache.flink.formats.common.TimestampFormat;
 import org.apache.flink.formats.json.JsonRowDataDeserializationSchema;
 import org.apache.flink.formats.json.turbobinglog.TurboMqJsonDecodingFormat.ReadableMetadata;
 import org.apache.flink.table.api.DataTypes;
-import org.apache.flink.table.api.TableSchema;
 import org.apache.flink.table.catalog.ResolvedSchema;
 import org.apache.flink.table.data.ArrayData;
 import org.apache.flink.table.data.GenericRowData;
@@ -64,25 +63,16 @@ import static org.apache.flink.formats.json.turbobinglog.TurboMqJsonDecodingForm
 public final class TurboMqJsonDeserializationSchema implements DeserializationSchema<RowData> {
     private static final long serialVersionUID = 1L;
 
-
-    /**
-     * The deserializer to deserialize Debezium JSON data.
-     */
+    /** The deserializer to deserialize Debezium JSON data. */
     private final JsonRowDataDeserializationSchema jsonDeserializer;
 
-    /**
-     * Flag that indicates that an additional projection is required for metadata.
-     */
+    /** Flag that indicates that an additional projection is required for metadata. */
     private final boolean hasMetadata;
 
-    /**
-     * Metadata to be extracted for every record.
-     */
+    /** Metadata to be extracted for every record. */
     private final MetadataConverter[] metadataConverters;
 
-    /**
-     * {@link TypeInformation} of the produced {@link RowData} (physical + meta data).
-     */
+    /** {@link TypeInformation} of the produced {@link RowData} (physical + meta data). */
     private final TypeInformation<RowData> producedTypeInfo;
 
     /**
@@ -90,9 +80,7 @@ public final class TurboMqJsonDeserializationSchema implements DeserializationSc
      * Kafka Connect enables "value.converter.schemas.enable", the JSON will contain "schema"
      * information, but we just ignore "schema" and extract data from "payload".
      */
-    /**
-     * Flag indicating whether to ignore invalid fields/rows (default: throw an exception).
-     */
+    /** Flag indicating whether to ignore invalid fields/rows (default: throw an exception). */
     private final boolean ignoreParseErrors;
 
     private final Map<Integer, Integer> realFieldPositionMap;
@@ -110,8 +98,7 @@ public final class TurboMqJsonDeserializationSchema implements DeserializationSc
         this.metaPositionMap = new HashMap<>();
         this.realDataPosition(dataType);
         // rowType for mq json that contains rowData and base
-        final RowType jsonRowType =
-                createJsonRowType(physicalDataType, readableMetadata);
+        final RowType jsonRowType = createJsonRowType(physicalDataType, readableMetadata);
         this.jsonDeserializer =
                 new JsonRowDataDeserializationSchema(
                         jsonRowType,
@@ -124,8 +111,7 @@ public final class TurboMqJsonDeserializationSchema implements DeserializationSc
                         true,
                         timestampFormat);
         this.hasMetadata = readableMetadata.size() > 0;
-        this.metadataConverters =
-                createMetadataConverters(jsonRowType, readableMetadata);
+        this.metadataConverters = createMetadataConverters(jsonRowType, readableMetadata);
         this.producedTypeInfo = producedTypeInfo;
         this.ignoreParseErrors = ignoreParseErrors;
     }
@@ -134,14 +120,17 @@ public final class TurboMqJsonDeserializationSchema implements DeserializationSc
             DataType physicalDataType, List<ReadableMetadata> readableMetadata) {
         ResolvedSchema tableSchema = DataTypeUtils.expandCompositeTypeToSchema(physicalDataType);
         List<DataTypes.Field> fields = new ArrayList<>();
-        tableSchema.getColumns().forEach(c -> {
-            fields.add(DataTypes.FIELD(c.getName(), DataTypes.ROW(DataTypes.FIELD("v", c.getDataType()))));
-        });
+        tableSchema
+                .getColumns()
+                .forEach(
+                        c -> {
+                            fields.add(
+                                    DataTypes.FIELD(
+                                            c.getName(),
+                                            DataTypes.ROW(DataTypes.FIELD("v", c.getDataType()))));
+                        });
         DataType innerRow = DataTypes.ROW(fields.toArray(new DataTypes.Field[fields.size()]));
-        DataType payload =
-                DataTypes.ROW(
-                        DataTypes.FIELD("rowData", DataTypes.ARRAY(innerRow))
-                );
+        DataType payload = DataTypes.ROW(DataTypes.FIELD("rowData", DataTypes.ARRAY(innerRow)));
 
         // append fields that are required for reading metadata in the payload
         final List<DataTypes.Field> payloadMetadataFields =
@@ -173,7 +162,6 @@ public final class TurboMqJsonDeserializationSchema implements DeserializationSc
                 } catch (Exception e) {
                     throw new RuntimeException("current meta:" + metadata.key, e);
                 }
-
             }
         };
     }
@@ -230,7 +218,8 @@ public final class TurboMqJsonDeserializationSchema implements DeserializationSc
                     GenericRowData fieldRow = (GenericRowData) innerRow.getRow(j, 1);
                     if (Objects.isNull(fieldRow)) {
                         producedRow.setField(j, null);
-//                        throw new IOException("check field name json is Case sensitivity !!,rowIndex:" + j + ",row:" + innerRow.toString());
+                        //                        throw new IOException("check field name json is
+                        // Case sensitivity !!,rowIndex:" + j + ",row:" + innerRow.toString());
                     } else {
                         // value
                         producedRow.setField(j, fieldRow.getField(0));
@@ -243,7 +232,8 @@ public final class TurboMqJsonDeserializationSchema implements DeserializationSc
             // a big try catch to protect the processing.
             if (!ignoreParseErrors) {
                 throw new IOException(
-                        format("Corrupt TurboMq binglog JSON message '%s'.", new String(message)), t);
+                        format("Corrupt TurboMq binglog JSON message '%s'.", new String(message)),
+                        t);
             }
         }
     }
@@ -265,12 +255,14 @@ public final class TurboMqJsonDeserializationSchema implements DeserializationSc
                 new GenericRowData(physicalRow.getRowKind(), physicalArity + metadataArity);
 
         for (int physicalPos = 0; physicalPos < physicalArity; physicalPos++) {
-            producedRow.setField(realFieldPositionMap.get(physicalPos), physicalRow.getField(physicalPos));
+            producedRow.setField(
+                    realFieldPositionMap.get(physicalPos), physicalRow.getField(physicalPos));
         }
 
         for (int metadataPos = 0; metadataPos < metadataArity; metadataPos++) {
             producedRow.setField(
-                    metaPositionMap.get(metadataPos), metadataConverters[metadataPos].convert(rootRow));
+                    metaPositionMap.get(metadataPos),
+                    metadataConverters[metadataPos].convert(rootRow));
         }
 
         out.collect(producedRow);
@@ -303,8 +295,7 @@ public final class TurboMqJsonDeserializationSchema implements DeserializationSc
 
     @Override
     public int hashCode() {
-        return Objects.hash(
-                jsonDeserializer, hasMetadata, producedTypeInfo, ignoreParseErrors);
+        return Objects.hash(jsonDeserializer, hasMetadata, producedTypeInfo, ignoreParseErrors);
     }
 
     // --------------------------------------------------------------------------------------------

@@ -1006,7 +1006,7 @@ SqlCreate SqlCreateFunction(Span s, boolean isTemporary) :
     }
     {
         return new SqlCreateFunction(s.pos(), functionIdentifier, functionClassName, null,
-                false, isTemporary, false);
+            null, false, isTemporary, false);
     }
 }
 

@@ -35,13 +35,17 @@ import org.apache.flink.table.types.extraction.ExtractionUtils;
 import org.apache.flink.table.types.inference.CallContext;
 import org.apache.flink.util.InstantiationUtil;
 
+import org.apache.commons.lang3.BooleanUtils;
+
 import javax.annotation.Nullable;
 
+import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -209,7 +213,8 @@ public final class UserDefinedFunctionHelper {
                 case SCALA:
                     final Class<?> functionClass =
                             classLoader.loadClass(catalogFunction.getClassName());
-                    return UserDefinedFunctionHelper.instantiateFunction((Class) functionClass);
+                    return UserDefinedFunctionHelper.instantiateFunction(
+                            (Class) functionClass, catalogFunction.getFunctionProperties());
                 default:
                     throw new IllegalArgumentException(
                             "Unknown function language: " + catalogFunction.getFunctionLanguage());
@@ -227,6 +232,32 @@ public final class UserDefinedFunctionHelper {
             Class<? extends UserDefinedFunction> functionClass) {
         validateClass(functionClass, true);
         try {
+            return functionClass.newInstance();
+        } catch (Exception e) {
+            throw new ValidationException(
+                    String.format(
+                            "Cannot instantiate user-defined function class '%s'.",
+                            functionClass.getName()),
+                    e);
+        }
+    }
+
+    /**
+     * Instantiates a {@link UserDefinedFunction} assuming a JVM function with default constructor.
+     */
+    public static UserDefinedFunction instantiateFunction(
+            Class<? extends UserDefinedFunction> functionClass,
+            Map<String, String> functionProperties) {
+        boolean hasProperties =
+                BooleanUtils.isTrue(functionProperties != null && functionProperties.size() > 0);
+        validateClass(functionClass, BooleanUtils.isFalse(hasProperties));
+        try {
+            if (hasProperties) {
+                Constructor<? extends UserDefinedFunction> constructor =
+                        functionClass.getDeclaredConstructor(Map.class);
+                constructor.setAccessible(true);
+                return constructor.newInstance(functionProperties);
+            }
             return functionClass.newInstance();
         } catch (Exception e) {
             throw new ValidationException(

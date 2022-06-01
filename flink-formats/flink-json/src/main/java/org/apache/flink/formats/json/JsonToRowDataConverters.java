@@ -226,7 +226,7 @@ public class JsonToRowDataConverters implements Serializable {
     private TimestampData convertToTimestamp(JsonNode jsonNode) {
         TemporalAccessor parsedTimestamp;
         String timestampStr = jsonNode.asText();
-        if(timestampStr.equals("0000-00-00 00:00:00")){
+        if (timestampStr.equals("0000-00-00 00:00:00")) {
             timestampStr = "1970-01-01 00:00:00";
         }
         switch (timestampFormat) {

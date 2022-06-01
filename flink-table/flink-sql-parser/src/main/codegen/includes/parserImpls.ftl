@@ -270,6 +270,7 @@ SqlCreate SqlCreateFunction(Span s, boolean replace, boolean isTemporary) :
     String functionLanguage = null;
     boolean ifNotExists = false;
     boolean isSystemFunction = false;
+    SqlNodeList propertyList = SqlNodeList.EMPTY;
 }
 {
     (
@@ -305,9 +306,13 @@ SqlCreate SqlCreateFunction(Span s, boolean replace, boolean isTemporary) :
             <PYTHON>   { functionLanguage = "PYTHON"; }
         )
     ]
+    [
+        <WITH>
+        propertyList = TableProperties()
+    ]
     {
         return new SqlCreateFunction(s.pos(), functionIdentifier, functionClassName, functionLanguage,
-                ifNotExists, isTemporary, isSystemFunction);
+            propertyList, ifNotExists, isTemporary, isSystemFunction);
     }
 }
 
