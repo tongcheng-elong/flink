@@ -373,6 +373,7 @@ public class YarnResourceManager extends ResourceManager<YarnWorkerNode> impleme
 	public void onContainersAllocated(List<Container> containers) {
 		runAsync(() -> {
 			for (Container container : containers) {
+				numPendingContainerRequests++;
 				log.info(
 					"Received new container: {} - Remaining pending container requests: {}",
 					container.getId(),
@@ -486,8 +487,6 @@ public class YarnResourceManager extends ResourceManager<YarnWorkerNode> impleme
 
 			// make sure we transmit the request fast and receive fast news of granted allocations
 			resourceManagerClient.setHeartbeatInterval(FAST_YARN_HEARTBEAT_INTERVAL_MS);
-
-			numPendingContainerRequests++;
 
 			log.info("Requesting new TaskExecutor container with resources {}. Number pending requests {}.",
 				resource,
