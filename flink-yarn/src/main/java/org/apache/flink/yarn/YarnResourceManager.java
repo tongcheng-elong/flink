@@ -482,7 +482,7 @@ public class YarnResourceManager extends ResourceManager<YarnWorkerNode> impleme
 	private void requestYarnContainer(Resource resource, Priority priority) {
 		int pendingSlotRequests = getNumberPendingSlotRequests();
 		int pendingSlotAllocation = numPendingContainerRequests * numberOfTaskSlots;
-		if (pendingSlotRequests > pendingSlotAllocation) {
+		if (pendingSlotRequests > pendingSlotAllocation && (numberOfTaskSlots == 1 || pendingSlotRequests % numberOfTaskSlots == 1)) {
 			resourceManagerClient.addContainerRequest(new AMRMClient.ContainerRequest(resource, null, null, priority));
 
 			// make sure we transmit the request fast and receive fast news of granted allocations
