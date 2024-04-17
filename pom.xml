@@ -35,17 +35,6 @@ under the License.
 	<url>https://flink.apache.org</url>
 	<inceptionYear>2014</inceptionYear>
 
-	<distributionManagement>
-		<repository>
-			<id>nexus-releases</id>
-			<url>http://nexus.17usoft.com/repository/mvn-wireless-bigdata-release/</url>
-		</repository>
-		<snapshotRepository>
-			<id>nexus-snapshots</id>
-			<url>http://nexus.17usoft.com/repository/mvn-dc-bigdata-snapshot/</url>
-		</snapshotRepository>
-	</distributionManagement>
-
 	<licenses>
 		<license>
 			<name>The Apache Software License, Version 2.0</name>
