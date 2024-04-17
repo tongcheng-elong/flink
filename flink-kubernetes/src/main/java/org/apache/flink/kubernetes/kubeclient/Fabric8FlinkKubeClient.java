@@ -25,6 +25,7 @@ import org.apache.flink.kubernetes.kubeclient.decorators.ExternalServiceDecorato
 import org.apache.flink.kubernetes.kubeclient.resources.KubernetesConfigMap;
 import org.apache.flink.kubernetes.kubeclient.resources.KubernetesConfigMapSharedInformer;
 import org.apache.flink.kubernetes.kubeclient.resources.KubernetesException;
+import org.apache.flink.kubernetes.kubeclient.resources.KubernetesIngress;
 import org.apache.flink.kubernetes.kubeclient.resources.KubernetesLeaderElector;
 import org.apache.flink.kubernetes.kubeclient.resources.KubernetesPod;
 import org.apache.flink.kubernetes.kubeclient.resources.KubernetesPodsWatcher;
@@ -49,6 +50,8 @@ import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.Service;
 import io.fabric8.kubernetes.api.model.ServicePort;
 import io.fabric8.kubernetes.api.model.apps.Deployment;
+import io.fabric8.kubernetes.api.model.networking.v1.Ingress;
+import io.fabric8.kubernetes.api.model.networking.v1.IngressRule;
 import io.fabric8.kubernetes.client.KubernetesClientException;
 import io.fabric8.kubernetes.client.NamespacedKubernetesClient;
 import org.slf4j.Logger;
@@ -182,11 +185,27 @@ public class Fabric8FlinkKubeClient implements FlinkKubeClient {
 
         // Return the external service.namespace directly when using ClusterIP.
         if (serviceExposedType.isClusterIP()) {
-            return Optional.of(
-                    new Endpoint(
-                            ExternalServiceDecorator.getNamespacedExternalServiceName(
-                                    clusterId, namespace),
-                            restPort));
+            Optional<KubernetesIngress> serviceIngress = getServiceIngress(clusterId);
+            if (!serviceIngress.isPresent()) {
+                return Optional.of(
+                        new Endpoint(
+                                ExternalServiceDecorator.getNamespacedExternalServiceName(
+                                        clusterId, namespace),
+                                restPort));
+            } else {
+                try {
+                    KubernetesIngress ingress = serviceIngress.get();
+                    IngressRule rule = ingress.getInternalResource().getSpec().getRules().get(0);
+                    String host =
+                            String.format(
+                                    "http://%s%s",
+                                    rule.getHost(), rule.getHttp().getPaths().get(0).getPath());
+                    return Optional.of(new Endpoint(host, -1));
+                } catch (Exception e) {
+                    throw new FlinkRuntimeException(
+                            String.format("getRestEndpoint_Ingress_Error: %s", clusterId), e);
+                }
+            }
         }
 
         return getRestEndPointFromService(service, restPort);
@@ -444,6 +463,22 @@ public class Fabric8FlinkKubeClient implements FlinkKubeClient {
             }
         }
         return Optional.empty();
+    }
+
+    private Optional<KubernetesIngress> getServiceIngress(String clusterId) {
+        Ingress ingress =
+                this.internalClient
+                        .network()
+                        .v1()
+                        .ingresses()
+                        .inNamespace(this.namespace)
+                        .withName(clusterId)
+                        .get();
+        if (ingress == null) {
+            LOG.warn("Ingress {} does not exist", clusterId);
+            return Optional.empty();
+        }
+        return Optional.of(new KubernetesIngress(ingress));
     }
 
     private Optional<Endpoint> getLoadBalancerRestEndpoint(

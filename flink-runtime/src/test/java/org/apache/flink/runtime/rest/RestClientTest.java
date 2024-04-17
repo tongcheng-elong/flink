@@ -86,6 +86,7 @@ public class RestClientTest extends TestLogger {
                     restClient.sendRequest(
                             unroutableIp,
                             80,
+                            "",
                             new TestMessageHeaders(),
                             EmptyMessageParameters.getInstance(),
                             EmptyRequestBody.getInstance(),

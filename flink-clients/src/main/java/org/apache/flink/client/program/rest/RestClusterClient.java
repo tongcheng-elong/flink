@@ -29,6 +29,7 @@ import org.apache.flink.client.program.ClusterClient;
 import org.apache.flink.client.program.rest.retry.ExponentialWaitStrategy;
 import org.apache.flink.client.program.rest.retry.WaitStrategy;
 import org.apache.flink.configuration.Configuration;
+import org.apache.flink.configuration.RestOptions;
 import org.apache.flink.core.fs.Path;
 import org.apache.flink.runtime.client.JobStatusMessage;
 import org.apache.flink.runtime.client.JobSubmissionException;
@@ -436,6 +437,7 @@ public class RestClusterClient<T> implements ClusterClient<T> {
 
     @Override
     public CompletableFuture<Acknowledge> cancel(JobID jobID) {
+        LOG.error("RestClusterClient_cancel_job:" + jobID);
         JobCancellationMessageParameters params = new JobCancellationMessageParameters();
         params.jobPathParameter.resolve(jobID);
         params.terminationModeQueryParameter.resolve(
@@ -852,7 +854,11 @@ public class RestClusterClient<T> implements ClusterClient<T> {
                                                 final CompletableFuture<P> future =
                                                         restClient.sendRequest(
                                                                 webMonitorBaseUrl.getHost(),
-                                                                webMonitorBaseUrl.getPort(),
+                                                                webMonitorBaseUrl.getPort() == -1
+                                                                        ? 80
+                                                                        : webMonitorBaseUrl
+                                                                                .getPort(),
+                                                                webMonitorBaseUrl.getPath(),
                                                                 messageHeaders,
                                                                 messageParameters,
                                                                 request,
@@ -916,6 +922,29 @@ public class RestClusterClient<T> implements ClusterClient<T> {
 
     @VisibleForTesting
     CompletableFuture<URL> getWebMonitorBaseUrl() {
+        boolean useDirect = configuration.getBoolean(RestOptions.REST_SERVICE_USE_DIRECT_URL);
+        if (useDirect) {
+            return FutureUtils.orTimeout(
+                            webMonitorLeaderRetriever.getLeaderFuture(),
+                            restClusterClientConfiguration.getAwaitLeaderTimeout(),
+                            TimeUnit.MILLISECONDS)
+                    .thenApplyAsync(
+                            leaderAddressSessionId -> {
+                                String url =
+                                        configuration.getString(
+                                                RestOptions.REST_SERVICE_DIRECT_URL);
+                                LOG.warn("RestClusterClient_TakeBack direct host" + url);
+                                try {
+                                    return new URL(url);
+                                } catch (MalformedURLException e) {
+                                    throw new IllegalArgumentException(
+                                            "Could not parse URL from " + url, e);
+                                }
+                            },
+                            executorService);
+        }
+
+        LOG.warn("RestClusterClient_TakeBack not direct host");
         return FutureUtils.orTimeout(
                         webMonitorLeaderRetriever.getLeaderFuture(),
                         restClusterClientConfiguration.getAwaitLeaderTimeout(),

@@ -230,4 +230,19 @@ public class RestOptions {
                     .intType()
                     .defaultValue(100)
                     .withDescription("Maximum depth of stack traces used to create FlameGraphs.");
+
+    public static final ConfigOption<Boolean> REST_SERVICE_USE_DIRECT_URL =
+            key("rest.service.use.direct.url")
+                    .booleanType()
+                    .defaultValue(Boolean.FALSE)
+                    .withDescription(
+                            " rest client with the of direct url. "
+                                    + "when accessing the flink cluster.");
+
+    public static final ConfigOption<String> REST_SERVICE_DIRECT_URL =
+            key("rest.service.direct.url")
+                    .stringType()
+                    .noDefaultValue()
+                    .withDescription(
+                            " the rest client direct url. " + "when accessing the flink cluster.");
 }

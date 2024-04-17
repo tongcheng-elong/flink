@@ -304,6 +304,7 @@ public class RestClient implements AutoCloseableAsync {
         return sendRequest(
                 targetAddress,
                 targetPort,
+                "",
                 messageHeaders,
                 messageParameters,
                 request,
@@ -319,6 +320,32 @@ public class RestClient implements AutoCloseableAsync {
             CompletableFuture<P> sendRequest(
                     String targetAddress,
                     int targetPort,
+                    String context,
+                    M messageHeaders,
+                    U messageParameters,
+                    R request,
+                    Collection<FileUpload> fileUploads)
+                    throws IOException {
+        return sendRequest(
+                targetAddress,
+                targetPort,
+                context,
+                messageHeaders,
+                messageParameters,
+                request,
+                fileUploads,
+                RestAPIVersion.getLatestVersion(messageHeaders.getSupportedAPIVersions()));
+    }
+
+    public <
+                    M extends MessageHeaders<R, P, U>,
+                    U extends MessageParameters,
+                    R extends RequestBody,
+                    P extends ResponseBody>
+            CompletableFuture<P> sendRequest(
+                    String targetAddress,
+                    int targetPort,
+                    String context,
                     M messageHeaders,
                     U messageParameters,
                     R request,
@@ -349,10 +376,13 @@ public class RestClient implements AutoCloseableAsync {
         }
 
         String versionedHandlerURL =
-                "/" + apiVersion.getURLVersionPrefix() + messageHeaders.getTargetRestEndpointURL();
+                context
+                        + "/"
+                        + apiVersion.getURLVersionPrefix()
+                        + messageHeaders.getTargetRestEndpointURL();
         String targetUrl = MessageParameters.resolveUrl(versionedHandlerURL, messageParameters);
 
-        LOG.debug(
+        LOG.warn(
                 "Sending request of class {} to {}:{}{}",
                 request.getClass(),
                 targetAddress,

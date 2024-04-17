@@ -467,6 +467,7 @@ public class RestServerEndpointITCase extends TestLogger {
                 restClient.sendRequest(
                         serverAddress.getHostName(),
                         serverAddress.getPort(),
+                        "",
                         TestVersionHeaders.INSTANCE,
                         EmptyMessageParameters.getInstance(),
                         EmptyRequestBody.getInstance(),
@@ -482,6 +483,7 @@ public class RestServerEndpointITCase extends TestLogger {
                 restClient.sendRequest(
                         serverAddress.getHostName(),
                         serverAddress.getPort(),
+                        "",
                         TestVersionSelectionHeaders1.INSTANCE,
                         EmptyMessageParameters.getInstance(),
                         EmptyRequestBody.getInstance(),
@@ -500,6 +502,7 @@ public class RestServerEndpointITCase extends TestLogger {
                 restClient.sendRequest(
                         serverAddress.getHostName(),
                         serverAddress.getPort(),
+                        "",
                         TestVersionSelectionHeaders2.INSTANCE,
                         EmptyMessageParameters.getInstance(),
                         EmptyRequestBody.getInstance(),
