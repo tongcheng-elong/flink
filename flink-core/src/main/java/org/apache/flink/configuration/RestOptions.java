@@ -286,4 +286,19 @@ public class RestOptions {
                     .defaultValue(Duration.ofMinutes(5))
                     .withDescription(
                             "Maximum duration that the result of an async operation is stored. Once elapsed the result of the operation can no longer be retrieved.");
+
+    public static final ConfigOption<Boolean> REST_SERVICE_USE_DIRECT_URL =
+            key("rest.service.use.direct.url")
+                    .booleanType()
+                    .defaultValue(Boolean.FALSE)
+                    .withDescription(
+                            " rest client with the of direct url. "
+                                    + "when accessing the flink cluster.");
+
+    public static final ConfigOption<String> REST_SERVICE_DIRECT_URL =
+            key("rest.service.direct.url")
+                    .stringType()
+                    .noDefaultValue()
+                    .withDescription(
+                            " the rest client direct url. " + "when accessing the flink cluster.");
 }

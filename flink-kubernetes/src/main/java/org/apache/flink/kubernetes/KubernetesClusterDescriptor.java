@@ -57,6 +57,7 @@ import org.apache.flink.runtime.rpc.AddressResolution;
 import org.apache.flink.util.FlinkException;
 import org.apache.flink.util.Preconditions;
 
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -125,7 +126,10 @@ public class KubernetesClusterDescriptor implements ClusterDescriptor<String> {
                         clusterId,
                         (effectiveConfiguration, fatalErrorHandler) ->
                                 new StandaloneClientHAServices(
-                                        getWebMonitorAddress(effectiveConfiguration)));
+                                        getWebMonitorAddress(
+                                                effectiveConfiguration,
+                                                clusterId,
+                                                restEndpoint.get().getAddress())));
             } catch (Exception e) {
                 throw new RuntimeException(
                         new ClusterRetrieveException("Could not create the RestClusterClient.", e));
@@ -133,10 +137,23 @@ public class KubernetesClusterDescriptor implements ClusterDescriptor<String> {
         };
     }
 
-    private String getWebMonitorAddress(Configuration configuration) throws Exception {
+    private String getWebMonitorAddress(
+            Configuration configuration, String clusterId, String address) throws Exception {
         AddressResolution resolution = AddressResolution.TRY_ADDRESS_RESOLUTION;
         final KubernetesConfigOptions.ServiceExposedType serviceType =
                 configuration.get(KubernetesConfigOptions.REST_SERVICE_EXPOSED_TYPE);
+
+        if (serviceType.isClusterIP() && StringUtils.isNotBlank(address)) {
+            configuration.setBoolean(RestOptions.REST_SERVICE_USE_DIRECT_URL, Boolean.TRUE);
+            configuration.setString(RestOptions.REST_SERVICE_DIRECT_URL, address);
+
+            LOG.warn(
+                    "getWebMonitorAddress_using_ingress: clusterId -> {} , Ingress -> {}",
+                    clusterId,
+                    address);
+            return address;
+        }
+
         if (serviceType.isClusterIP()) {
             resolution = AddressResolution.NO_ADDRESS_RESOLUTION;
             LOG.warn(

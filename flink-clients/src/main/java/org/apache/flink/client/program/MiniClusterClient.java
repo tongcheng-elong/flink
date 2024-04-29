@@ -84,6 +84,7 @@ public class MiniClusterClient implements ClusterClient<MiniClusterClient.MiniCl
 
     @Override
     public CompletableFuture<Acknowledge> cancel(JobID jobId) {
+        LOG.error("RestClusterClient_cancel_job_18: MiniClusterClient -> " + jobId);
         return miniCluster.cancelJob(jobId);
     }
 

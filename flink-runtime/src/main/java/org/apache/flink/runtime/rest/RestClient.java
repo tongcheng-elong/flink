@@ -87,6 +87,7 @@ import org.apache.flink.shaded.netty4.io.netty.handler.stream.ChunkedWriteHandle
 import org.apache.flink.shaded.netty4.io.netty.handler.timeout.IdleStateEvent;
 import org.apache.flink.shaded.netty4.io.netty.handler.timeout.IdleStateHandler;
 
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -398,6 +399,7 @@ public class RestClient implements AutoCloseableAsync {
         return sendRequest(
                 targetAddress,
                 targetPort,
+                "",
                 messageHeaders,
                 messageParameters,
                 request,
@@ -413,6 +415,59 @@ public class RestClient implements AutoCloseableAsync {
             CompletableFuture<P> sendRequest(
                     String targetAddress,
                     int targetPort,
+                    String context,
+                    M messageHeaders,
+                    U messageParameters,
+                    R request,
+                    Collection<FileUpload> fileUploads)
+                    throws IOException {
+        Collection<? extends RestAPIVersion> supportedAPIVersions =
+                messageHeaders.getSupportedAPIVersions();
+        return sendRequest(
+                targetAddress,
+                targetPort,
+                context,
+                messageHeaders,
+                messageParameters,
+                request,
+                fileUploads,
+                RestAPIVersion.getLatestVersion(supportedAPIVersions));
+    }
+
+    public <
+                    M extends MessageHeaders<R, P, U>,
+                    U extends MessageParameters,
+                    R extends RequestBody,
+                    P extends ResponseBody>
+            CompletableFuture<P> sendRequest(
+                    String targetAddress,
+                    int targetPort,
+                    M messageHeaders,
+                    U messageParameters,
+                    R request,
+                    Collection<FileUpload> fileUploads,
+                    RestAPIVersion<? extends RestAPIVersion<?>> apiVersion)
+                    throws IOException {
+        return sendRequest(
+                targetAddress,
+                targetPort,
+                "",
+                messageHeaders,
+                messageParameters,
+                request,
+                fileUploads,
+                apiVersion);
+    }
+
+    public <
+                    M extends MessageHeaders<R, P, U>,
+                    U extends MessageParameters,
+                    R extends RequestBody,
+                    P extends ResponseBody>
+            CompletableFuture<P> sendRequest(
+                    String targetAddress,
+                    int targetPort,
+                    String context,
                     M messageHeaders,
                     U messageParameters,
                     R request,
@@ -444,10 +499,13 @@ public class RestClient implements AutoCloseableAsync {
 
         String versionedHandlerURL =
                 constructVersionedHandlerUrl(
-                        messageHeaders, apiVersion.getURLVersionPrefix(), this.urlPrefix);
+                        messageHeaders,
+                        apiVersion.getURLVersionPrefix(),
+                        this.urlPrefix
+                                + (StringUtils.isNotBlank(context) ? context + "/" : context));
         String targetUrl = MessageParameters.resolveUrl(versionedHandlerURL, messageParameters);
 
-        LOG.debug(
+        LOG.error(
                 "Sending request of class {} to {}:{}{}",
                 request.getClass(),
                 targetAddress,
