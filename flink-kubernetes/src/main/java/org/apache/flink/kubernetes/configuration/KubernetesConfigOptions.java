@@ -534,6 +534,27 @@ public class KubernetesConfigOptions {
         return "apache/flink:" + tag;
     }
 
+    public static final ConfigOption<Boolean> LOCAL_UPLOAD_ENABLED =
+            ConfigOptions.key("kubernetes.artifacts.local-upload-enabled")
+                    .booleanType()
+                    .defaultValue(false)
+                    .withDescription(
+                            "Enables uploading 'local://' schemed artifacts to DFS before the the application cluster deployment.");
+
+    public static final ConfigOption<Boolean> LOCAL_UPLOAD_OVERWRITE =
+            ConfigOptions.key("kubernetes.artifacts.local-upload-overwrite")
+                    .booleanType()
+                    .defaultValue(false)
+                    .withDescription(
+                            "If enabled, overwrites any existing artifact on the remote target. Disabled by default.");
+
+    public static final ConfigOption<String> LOCAL_UPLOAD_TARGET =
+            ConfigOptions.key("kubernetes.artifacts.local-upload-target")
+                    .stringType()
+                    .noDefaultValue()
+                    .withDescription("The target remote DFS directory to upload local artifacts.");
+
+
     /** The flink rest service exposed type. */
     public enum ServiceExposedType {
         ClusterIP(ClusterIPService.INSTANCE),

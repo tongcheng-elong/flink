@@ -23,6 +23,7 @@ import org.apache.flink.client.deployment.AbstractContainerizedClusterClientFact
 import org.apache.flink.client.deployment.ClusterClientFactory;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.DeploymentOptions;
+import org.apache.flink.kubernetes.artifact.DefaultKubernetesArtifactUploader;
 import org.apache.flink.kubernetes.configuration.KubernetesConfigOptions;
 import org.apache.flink.kubernetes.configuration.KubernetesDeploymentTarget;
 import org.apache.flink.kubernetes.kubeclient.FlinkKubeClientFactory;
@@ -58,7 +59,8 @@ public class KubernetesClusterClientFactory
         }
         return new KubernetesClusterDescriptor(
                 configuration,
-                FlinkKubeClientFactory.getInstance().fromConfiguration(configuration, "client"));
+                FlinkKubeClientFactory.getInstance(),
+                new DefaultKubernetesArtifactUploader());
     }
 
     @Nullable

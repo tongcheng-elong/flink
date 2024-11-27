@@ -36,12 +36,17 @@ import java.io.File;
 import java.io.IOException;
 import java.net.MalformedURLException;
 import java.net.URL;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
+
+import static org.apache.flink.util.Preconditions.checkNotNull;
 
 /**
  * {@code PackageProgramRetrieverImpl} is the default implementation of {@link
@@ -124,6 +129,60 @@ public class DefaultPackagedProgramRetriever implements PackagedProgramRetriever
                 entryClassInformationProvider, programArgs, userClasspaths, configuration);
     }
 
+    /**
+     * Creates a {@code PackageProgramRetrieverImpl} with the given parameters.
+     *
+     * @param userLibDir The user library directory that is used for generating the user classpath
+     *     if specified. The system classpath is used if not specified.
+     * @param jarFile The jar archive expected to contain the job class included; {@code null} if
+     *     the job class is on the system classpath.
+     * @param userArtifacts The user artifacts that should be added to the user classpath if
+     *     specified.
+     * @param jobClassName The job class to use; if {@code null} the user classpath (or, if not set,
+     *     the system classpath) will be scanned for possible main class.
+     * @param programArgs The program arguments.
+     * @param configuration The Flink configuration for the given job.
+     * @return The {@code PackageProgramRetrieverImpl} that can be used to create a {@link
+     *     PackagedProgram} instance.
+     * @throws FlinkException If something goes wrong during instantiation.
+     */
+    public static DefaultPackagedProgramRetriever create(
+            @Nullable File userLibDir,
+            @Nullable File jarFile,
+            @Nullable Collection<File> userArtifacts,
+            @Nullable String jobClassName,
+            String[] programArgs,
+            Configuration configuration)
+            throws FlinkException {
+        List<URL> userClasspaths;
+        try {
+            final List<URL> classpathsFromUserLibDir =
+                    getClasspathsFromUserLibDir(userLibDir, jarFile);
+            final List<URL> classpathsFromUserArtifactDir =
+                    getClasspathsFromArtifacts(userArtifacts, jarFile);
+            final List<URL> classpathsFromConfiguration =
+                    getClasspathsFromConfiguration(configuration);
+
+            final List<URL> classpaths = new ArrayList<>();
+            classpaths.addAll(classpathsFromUserLibDir);
+            classpaths.addAll(classpathsFromUserArtifactDir);
+            classpaths.addAll(classpathsFromConfiguration);
+
+            userClasspaths = Collections.unmodifiableList(classpaths);
+        } catch (IOException e) {
+            throw new FlinkException("An error occurred while extracting the user classpath.", e);
+        }
+
+        final EntryClassInformationProvider entryClassInformationProvider =
+                createEntryClassInformationProvider(
+                        (userLibDir == null && userArtifacts == null) ? null : userClasspaths,
+                        jarFile,
+                        jobClassName,
+                        programArgs);
+        return new DefaultPackagedProgramRetriever(
+                entryClassInformationProvider, programArgs, userClasspaths, configuration);
+    }
+
     @VisibleForTesting
     static EntryClassInformationProvider createEntryClassInformationProvider(
             @Nullable Iterable<URL> userClasspath,
@@ -185,13 +244,13 @@ public class DefaultPackagedProgramRetriever implements PackagedProgramRetriever
             List<URL> userClasspath,
             Configuration configuration) {
         this.entryClassInformationProvider =
-                Preconditions.checkNotNull(
+                checkNotNull(
                         entryClassInformationProvider, "No EntryClassInformationProvider passed.");
         this.programArguments =
-                Preconditions.checkNotNull(programArguments, "No program parameter array passed.");
-        this.userClasspath = Preconditions.checkNotNull(userClasspath, "No user classpath passed.");
+                checkNotNull(programArguments, "No program parameter array passed.");
+        this.userClasspath = checkNotNull(userClasspath, "No user classpath passed.");
         this.configuration =
-                Preconditions.checkNotNull(configuration, "No Flink configuration was passed.");
+                checkNotNull(configuration, "No Flink configuration was passed.");
     }
 
     @Override
@@ -238,5 +297,39 @@ public class DefaultPackagedProgramRetriever implements PackagedProgramRetriever
         }
         return ConfigUtils.decodeListFromConfig(
                 configuration, PipelineOptions.CLASSPATHS, URL::new);
+    }
+
+    private static List<URL> getClasspathsFromUserLibDir(
+            @Nullable File userLibDir, @Nullable File jarFile) throws IOException {
+        if (userLibDir == null) {
+            return Collections.emptyList();
+        }
+
+        try (Stream<Path> files = Files.walk(userLibDir.toPath())) {
+            return getClasspathsFromArtifacts(files, jarFile);
+        }
+    }
+
+    private static List<URL> getClasspathsFromArtifacts(
+            @Nullable Collection<File> userArtifacts, @Nullable File jarFile) {
+        if (userArtifacts == null) {
+            return Collections.emptyList();
+        }
+
+        return getClasspathsFromArtifacts(userArtifacts.stream().map(File::toPath), jarFile);
+    }
+
+    private static List<URL> getClasspathsFromArtifacts(
+            Stream<Path> userArtifacts, @Nullable File jarFile) {
+        checkNotNull(userArtifacts);
+
+        final Path workingDirectory = FileUtils.getCurrentWorkingDirectory();
+        final List<URL> relativeJarURLs =
+                userArtifacts
+                        .filter(path -> FileUtils.isJarFile(path) && !path.toFile().equals(jarFile))
+                        .map(path -> FileUtils.relativizePath(workingDirectory, path))
+                        .map(FunctionUtils.uncheckedFunction(FileUtils::toURL))
+                        .collect(Collectors.toList());
+        return Collections.unmodifiableList(relativeJarURLs);
     }
 }
