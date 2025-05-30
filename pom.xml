@@ -28,7 +28,7 @@ under the License.
 
 	<groupId>org.apache.flink</groupId>
 	<artifactId>flink-parent</artifactId>
-	<version>1.14.4-ly-oversea-SNAPSHOT</version>
+	<version>1.14.4-ly-oversea-20250530-SNAPSHOT</version>
 
 	<name>Flink : </name>
 	<packaging>pom</packaging>
@@ -2143,5 +2143,21 @@ under the License.
 			</plugins>
 		</pluginManagement>
 	</build>
+	<distributionManagement>
+		<repository>
+			<id>mvn-wireless-bigdata-release</id>
+			<name>mvn-wireless-bigdata-release</name>
+			<url>http://nexus.17usoft.com/repository/mvn-wireless-bigdata-release/</url>
+		</repository>
+		<snapshotRepository>
+			<id>mvn-wireless-bigdata-snapshot</id>
+			<name>mvn-wireless-bigdata-snapshot</name>
+			<url>http://nexus.17usoft.com/repository/mvn-wireless-bigdata-snapshot/</url>
+			<snapshots>
+				<enabled>true</enabled>
+				<updatePolicy>always</updatePolicy>
+			</snapshots>
+		</snapshotRepository>
+	</distributionManagement>
 
 </project>
