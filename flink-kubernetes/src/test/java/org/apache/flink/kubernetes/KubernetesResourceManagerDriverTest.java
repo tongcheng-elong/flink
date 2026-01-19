@@ -37,6 +37,7 @@ import org.apache.flink.runtime.testutils.CommonTestUtils;
 import org.apache.flink.util.concurrent.FutureUtils;
 
 import io.fabric8.kubernetes.api.model.ResourceRequirements;
+import io.fabric8.kubernetes.client.KubernetesClientException;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -44,10 +45,12 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.fail;
 
@@ -185,6 +188,18 @@ class KubernetesResourceManagerDriverTest
     }
 
     @Test
+    void testOnPodDeletedBeforeScheduled() throws Exception {
+        new Context() {
+            {
+                // If the pod is deleted during the pending phase, we cannot detect the pod is
+                // terminated because its status won't be updated, but should handle the deleted
+                // event
+                testOnPodTerminated((pod) -> getPodCallbackHandler().onDeleted(pod), false, false);
+            }
+        };
+    }
+
+    @Test
     void testOnError() throws Exception {
         new Context() {
             {
@@ -207,6 +222,30 @@ class KubernetesResourceManagerDriverTest
                             assertThat(onErrorFuture.get(TIMEOUT_SEC, TimeUnit.SECONDS))
                                     .isEqualTo(testingError);
                         });
+            }
+        };
+    }
+
+    @Test
+    void testKubernetesExceptionHandling() throws Exception {
+        new Context() {
+            {
+                runTest(
+                        () ->
+                                assertThatCode(
+                                                () ->
+                                                        runInMainThread(
+                                                                        () -> {
+                                                                            getDriver()
+                                                                                    .requestResource(
+                                                                                            TASK_EXECUTOR_PROCESS_SPEC)
+                                                                                    .completeExceptionally(
+                                                                                            new CompletionException(
+                                                                                                    new KubernetesClientException(
+                                                                                                            "test")));
+                                                                        })
+                                                                .get())
+                                        .doesNotThrowAnyException());
             }
         };
     }
@@ -499,6 +538,14 @@ class KubernetesResourceManagerDriverTest
 
         void testOnPodTerminated(Consumer<List<KubernetesPod>> sendPodTerminatedEvent)
                 throws Exception {
+            testOnPodTerminated(sendPodTerminatedEvent, true, true);
+        }
+
+        void testOnPodTerminated(
+                Consumer<List<KubernetesPod>> sendPodTerminatedEvent,
+                boolean isPodScheduled,
+                boolean isPodTerminated)
+                throws Exception {
             final CompletableFuture<KubernetesWorkerNode> requestResourceFuture =
                     new CompletableFuture<>();
             final CompletableFuture<ResourceID> onWorkerTerminatedConsumer =
@@ -537,7 +584,8 @@ class KubernetesResourceManagerDriverTest
 
                         sendPodTerminatedEvent.accept(
                                 Collections.singletonList(
-                                        new TestingKubernetesPod(pod.getName(), true, true)));
+                                        new TestingKubernetesPod(
+                                                pod.getName(), isPodScheduled, isPodTerminated)));
 
                         // make sure finishing validation
                         validationFuture.get(TIMEOUT_SEC, TimeUnit.SECONDS);

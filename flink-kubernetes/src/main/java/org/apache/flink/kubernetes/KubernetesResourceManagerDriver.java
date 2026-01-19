@@ -53,6 +53,8 @@ import org.apache.flink.util.FlinkException;
 import org.apache.flink.util.Preconditions;
 import org.apache.flink.util.concurrent.FutureUtils;
 
+import io.fabric8.kubernetes.client.KubernetesClientException;
+
 import javax.annotation.Nullable;
 
 import java.io.File;
@@ -64,6 +66,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 
 /** Implementation of {@link ResourceManagerDriver} for Kubernetes deployment. */
 public class KubernetesResourceManagerDriver
@@ -219,6 +222,10 @@ public class KubernetesResourceManagerDriver
                             if (t == null) {
                                 return null;
                             }
+                            // Unwrap CompletionException cause if any
+                            if (t instanceof CompletionException && t.getCause() != null) {
+                                t = t.getCause();
+                            }
                             if (t instanceof CancellationException) {
 
                                 requestResourceFutures.remove(taskManagerPod.getName());
@@ -228,8 +235,9 @@ public class KubernetesResourceManagerDriver
                                             podName);
                                     stopPod(taskManagerPod.getName());
                                 }
-                            } else if (t instanceof RetryableException) {
-                                // ignore
+                            } else if (t instanceof RetryableException
+                                    || t instanceof KubernetesClientException) {
+                                // ignore transient / retriable errors
                             } else {
                                 log.error("Error completing resource request.", t);
                                 ExceptionUtils.rethrow(t);
@@ -340,12 +348,15 @@ public class KubernetesResourceManagerDriver
                 blockedNodes);
     }
 
-    private void handlePodEventsInMainThread(List<KubernetesPod> pods) {
+    private void handlePodEventsInMainThread(List<KubernetesPod> pods, PodEvent podEvent) {
         getMainThreadExecutor()
                 .execute(
                         () -> {
                             for (KubernetesPod pod : pods) {
-                                if (pod.isTerminated()) {
+                                // we should also handle the deleted event to avoid situations where
+                                // the pod itself doesn't reflect the status correctly (i.e. pod
+                                // removed during the pending phase).
+                                if (podEvent == PodEvent.DELETED || pod.isTerminated()) {
                                     onPodTerminated(pod);
                                 } else if (pod.isScheduled()) {
                                     onPodScheduled(pod);
@@ -416,22 +427,22 @@ public class KubernetesResourceManagerDriver
             implements FlinkKubeClient.WatchCallbackHandler<KubernetesPod> {
         @Override
         public void onAdded(List<KubernetesPod> pods) {
-            handlePodEventsInMainThread(pods);
+            handlePodEventsInMainThread(pods, PodEvent.ADDED);
         }
 
         @Override
         public void onModified(List<KubernetesPod> pods) {
-            handlePodEventsInMainThread(pods);
+            handlePodEventsInMainThread(pods, PodEvent.MODIFIED);
         }
 
         @Override
         public void onDeleted(List<KubernetesPod> pods) {
-            handlePodEventsInMainThread(pods);
+            handlePodEventsInMainThread(pods, PodEvent.DELETED);
         }
 
         @Override
         public void onError(List<KubernetesPod> pods) {
-            handlePodEventsInMainThread(pods);
+            handlePodEventsInMainThread(pods, PodEvent.ERROR);
         }
 
         @Override
@@ -462,5 +473,13 @@ public class KubernetesResourceManagerDriver
         RetryableException(String message) {
             super(message);
         }
+    }
+
+    /** Internal type of the pod event. */
+    private enum PodEvent {
+        ADDED,
+        MODIFIED,
+        DELETED,
+        ERROR
     }
 }
