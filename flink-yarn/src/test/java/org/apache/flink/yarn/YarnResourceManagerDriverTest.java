@@ -30,6 +30,7 @@ import org.apache.flink.runtime.resourcemanager.active.ResourceManagerDriverTest
 import org.apache.flink.runtime.resourcemanager.exceptions.ResourceManagerException;
 import org.apache.flink.runtime.util.HadoopUtils;
 import org.apache.flink.util.ExceptionUtils;
+import org.apache.flink.yarn.configuration.YarnConfigOptions;
 import org.apache.flink.yarn.configuration.YarnResourceManagerDriverConfiguration;
 
 import org.apache.flink.shaded.guava31.com.google.common.collect.ImmutableList;
@@ -406,6 +407,115 @@ public class YarnResourceManagerDriverTest extends ResourceManagerDriverTestBase
     }
 
     @Test
+    void testExcludedHostsAreAddedToBlocklistOnInitialize() throws Exception {
+        new Context() {
+            {
+                flinkConfig.set(
+                        YarnConfigOptions.TASK_MANAGER_EXCLUDED_HOSTS,
+                        Arrays.asList("bad-host-1", "bad-host-2"));
+
+                final Set<String> yarnReceivedBlocklist = new HashSet<>();
+                testingYarnAMRMClientAsyncBuilder.setUpdateBlocklistConsumer(
+                        (additions, removals) -> {
+                            if (additions != null) {
+                                yarnReceivedBlocklist.addAll(additions);
+                            }
+                        });
+
+                runTest(
+                        () ->
+                                assertThat(yarnReceivedBlocklist)
+                                        .containsExactlyInAnyOrder("bad-host-1", "bad-host-2"));
+            }
+        };
+    }
+
+    @Test
+    void testContainerOnExcludedHostIsReleasedAndRequestReissued() throws Exception {
+        new Context() {
+            {
+                flinkConfig.set(
+                        YarnConfigOptions.TASK_MANAGER_EXCLUDED_HOSTS,
+                        Collections.singletonList("container"));
+
+                addContainerRequestFutures.add(new CompletableFuture<>());
+                addContainerRequestFutures.add(new CompletableFuture<>());
+
+                testingYarnAMRMClientAsyncBuilder.setAddContainerRequestConsumer(
+                        (ignored1, ignored2) ->
+                                addContainerRequestFutures
+                                        .get(
+                                                addContainerRequestFuturesNumCompleted
+                                                        .getAndIncrement())
+                                        .complete(null));
+                testingYarnAMRMClientAsyncBuilder.setReleaseAssignedContainerConsumer(
+                        (ignored1, ignored2) -> releaseAssignedContainerFuture.complete(null));
+
+                runTest(
+                        () -> {
+                            runInMainThread(
+                                    () ->
+                                            getDriver()
+                                                    .requestResource(
+                                                            testingTaskExecutorProcessSpec));
+                            resourceManagerClientCallbackHandler.onContainersAllocated(
+                                    ImmutableList.of(testingContainer));
+
+                            verifyFutureCompleted(addContainerRequestFutures.get(0));
+                            verifyFutureCompleted(addContainerRequestFutures.get(1));
+                            verifyFutureCompleted(removeContainerRequestFuture);
+                            verifyFutureCompleted(releaseAssignedContainerFuture);
+                            assertThat(startContainerAsyncFuture.isDone()).isFalse();
+                        });
+            }
+        };
+    }
+
+    @Test
+    void testExcludedHostsAreCaseInsensitive() throws Exception {
+        new Context() {
+            {
+                flinkConfig.set(
+                        YarnConfigOptions.TASK_MANAGER_EXCLUDED_HOSTS,
+                        Collections.singletonList("BAD-HOST"));
+
+                addContainerRequestFutures.add(new CompletableFuture<>());
+                addContainerRequestFutures.add(new CompletableFuture<>());
+
+                testingYarnAMRMClientAsyncBuilder.setAddContainerRequestConsumer(
+                        (ignored1, ignored2) ->
+                                addContainerRequestFutures
+                                        .get(
+                                                addContainerRequestFuturesNumCompleted
+                                                        .getAndIncrement())
+                                        .complete(null));
+                testingYarnAMRMClientAsyncBuilder.setReleaseAssignedContainerConsumer(
+                        (ignored1, ignored2) -> releaseAssignedContainerFuture.complete(null));
+
+                final Container containerOnLowerCaseHost =
+                        createTestingContainerWithHost(
+                                testingResource, testingPriority, 2, "bad-host");
+
+                runTest(
+                        () -> {
+                            runInMainThread(
+                                    () ->
+                                            getDriver()
+                                                    .requestResource(
+                                                            testingTaskExecutorProcessSpec));
+                            resourceManagerClientCallbackHandler.onContainersAllocated(
+                                    ImmutableList.of(containerOnLowerCaseHost));
+
+                            verifyFutureCompleted(addContainerRequestFutures.get(0));
+                            verifyFutureCompleted(addContainerRequestFutures.get(1));
+                            verifyFutureCompleted(releaseAssignedContainerFuture);
+                            assertThat(startContainerAsyncFuture.isDone()).isFalse();
+                        });
+            }
+        };
+    }
+
+    @Test
     void testCancelRequestedResource() throws Exception {
         new Context() {
             {
@@ -701,12 +811,17 @@ public class YarnResourceManagerDriverTest extends ResourceManagerDriverTestBase
 
     private static Container createTestingContainerWithResource(
             Resource resource, Priority priority, int containerIdx) {
+        return createTestingContainerWithHost(resource, priority, containerIdx, "container");
+    }
+
+    private static Container createTestingContainerWithHost(
+            Resource resource, Priority priority, int containerIdx, String host) {
         final ContainerId containerId =
                 ContainerId.newInstance(
                         ApplicationAttemptId.newInstance(
                                 ApplicationId.newInstance(System.currentTimeMillis(), 1), 1),
                         containerIdx);
-        final NodeId nodeId = NodeId.newInstance("container", 1234);
+        final NodeId nodeId = NodeId.newInstance(host, 1234);
         return new TestingContainer(containerId, nodeId, resource, priority);
     }
 
