@@ -1,0 +1,50 @@
+flink-yarn/src/main/java/org/apache/flink/yarn/YarnResourceManagerDriver.java
+  s_393e98d14d5412::t_092b72c1cb31b9 178-182,184-188
+  s_393e98d14d5412::t_64aad581260467 68
+  s_393e98d14d5412::t_526e6ee70b006f 39
+  s_393e98d14d5412::t_946b24560af319 465,475-476,483-484,498,507-508,510,516-525,528-531,537-539,541-542,551
+  s_393e98d14d5412::t_efcd74c5dbecdc 496-497,532,544-546
+  s_393e98d14d5412::t_02a252c163cc73 533-535,543
+  s_393e98d14d5412::t_73bd0fb26534da 132-138
+  s_393e98d14d5412::t_38499af53ed4e9 229-247,249-250
+  s_393e98d14d5412::t_c18aab5d5222f4 477-482
+  s_393e98d14d5412::t_ab5a4a0918fe5c 526-527
+  s_393e98d14d5412::t_ff256103d5fa32 183
+  s_393e98d14d5412::t_79edf94391721b 536,540,547-550
+  s_393e98d14d5412::t_4bc9a05c9a9fff 248
+  s_393e98d14d5412::t_a39c33b97917c5 499
+  s_393e98d14d5412::t_0023831bfbb8db 552
+flink-yarn/src/main/java/org/apache/flink/yarn/configuration/YarnConfigOptions.java
+  s_393e98d14d5412::t_2f4e7abce2cddc 344,349-361
+  s_393e98d14d5412::t_ab5a4a0918fe5c 345-348
+flink-yarn/src/test/java/org/apache/flink/yarn/YarnResourceManagerDriverTest.java
+  s_393e98d14d5412::t_6cf2328cf479d5 456-460
+  s_393e98d14d5412::t_95a7afd66dcda6 814-818,824
+  s_393e98d14d5412::t_ab5a4a0918fe5c 428,496-497
+  s_393e98d14d5412::t_abb57c0749bbe7 409-427,429-451,453-455,461-492,494-495,498-517
+  s_393e98d14d5412::t_6df17c1049f4c8 452,493
+  s_393e98d14d5412::t_e860372c14fec3 33
+docs/content/docs/deployment/resource-providers/yarn.md
+  s_393e98d14d5412::t_0f8ac79cc5168f 212-217
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "a21c9b5458bf29a0ea76751e4f683e905181617f",
+  "prompts": {},
+  "humans": {
+    "h_f6e677c8b49563": {
+      "author": "wxp4532 <wxp4532@ly.com>"
+    }
+  },
+  "sessions": {
+    "s_393e98d14d5412": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_f84a229b1ffedi9CtEBQ9hBMUO",
+        "model": "MiniMax-M3"
+      },
+      "human_author": "wxp4532 <wxp4532@ly.com>"
+    }
+  }
+}
