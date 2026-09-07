@@ -341,6 +341,24 @@ public class YarnConfigOptions {
                             "Specify YARN node label for the Flink TaskManagers, it will "
                                     + "override the yarn.application.node-label for TaskManagers if both are set.");
 
+    /**
+     * A semicolon-separated list of hostnames that should be excluded from being used as
+     * TaskManager container locations. When a container allocated by YARN happens to land on a host
+     * in this list, Flink will release that container immediately and re-issue a new container
+     * request, so that TaskManagers will not end up running on the configured excluded hosts.
+     */
+    public static final ConfigOption<List<String>> TASK_MANAGER_EXCLUDED_HOSTS =
+            key("yarn.taskmanager.excluded-hosts")
+                    .stringType()
+                    .asList()
+                    .noDefaultValue()
+                    .withDescription(
+                            "A semicolon-separated list of hostnames that should be excluded from running "
+                                    + "Flink TaskManagers. When YARN allocates a container whose node host is in this "
+                                    + "list, Flink will release that container and re-issue a new container request "
+                                    + "instead of starting a TaskExecutor on the excluded host. Matching is "
+                                    + "case-insensitive and ignores leading/trailing whitespace.");
+
     public static final ConfigOption<Boolean> SHIP_LOCAL_KEYTAB =
             key("yarn.security.kerberos.ship-local-keytab")
                     .booleanType()

@@ -36,6 +36,7 @@ import org.apache.flink.runtime.util.ResourceManagerUtils;
 import org.apache.flink.runtime.webmonitor.history.HistoryServerUtils;
 import org.apache.flink.util.ExceptionUtils;
 import org.apache.flink.util.Preconditions;
+import org.apache.flink.util.StringUtils;
 import org.apache.flink.util.concurrent.FutureUtils;
 import org.apache.flink.yarn.configuration.YarnConfigOptions;
 import org.apache.flink.yarn.configuration.YarnResourceManagerDriverConfiguration;
@@ -64,6 +65,7 @@ import java.net.URL;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -127,6 +129,13 @@ public class YarnResourceManagerDriver extends AbstractResourceManagerDriver<Yar
 
     private final Set<String> lastBlockedNodes = new HashSet<>();
 
+    /**
+     * Hosts that should never run a Flink TaskManager. The set is matched against allocated
+     * container host names case-insensitively. Configured via {@link
+     * YarnConfigOptions#TASK_MANAGER_EXCLUDED_HOSTS}.
+     */
+    private final Set<String> excludedHosts = new HashSet<>();
+
     private volatile boolean isRunning = false;
 
     public YarnResourceManagerDriver(
@@ -165,6 +174,17 @@ public class YarnResourceManagerDriver extends AbstractResourceManagerDriver<Yar
                                 .toMillis());
 
         this.taskManagerNodeLabel = flinkConfig.get(YarnConfigOptions.TASK_MANAGER_NODE_LABEL);
+
+        flinkConfig
+                .getOptional(YarnConfigOptions.TASK_MANAGER_EXCLUDED_HOSTS)
+                .ifPresent(
+                        hosts ->
+                                hosts.stream()
+                                        .filter(s -> !StringUtils.isNullOrWhitespaceOnly(s))
+                                        .map(String::trim)
+                                        .filter(s -> !s.isEmpty())
+                                        .map(s -> s.toLowerCase())
+                                        .forEach(excludedHosts::add));
 
         this.registerApplicationMasterResponseReflector =
                 new RegisterApplicationMasterResponseReflector(log);
@@ -206,6 +226,28 @@ public class YarnResourceManagerDriver extends AbstractResourceManagerDriver<Yar
                 yarnNodeManagerClientFactory.createNodeManagerClient(yarnContainerEventHandler);
         nodeManagerClient.init(yarnConfig);
         nodeManagerClient.start();
+
+        applyExcludedHostsToBlocklist();
+    }
+
+    /**
+     * Push the configured excluded hosts into the YARN application-level blocklist so that the YARN
+     * scheduler should not allocate containers on those nodes in the first place. Even with this
+     * call, allocations on excluded hosts are still re-checked at {@link
+     * #onContainersAllocated(List)} as a defensive measure (e.g. for containers recovered from a
+     * previous application attempt).
+     */
+    private void applyExcludedHostsToBlocklist() {
+        if (excludedHosts.isEmpty()) {
+            return;
+        }
+        AMRMClientAsyncReflector.INSTANCE.tryUpdateBlockList(
+                resourceManagerClient, new ArrayList<>(excludedHosts), Collections.emptyList());
+        lastBlockedNodes.addAll(excludedHosts);
+        log.info(
+                "Excluded {} host(s) from TaskManager placement; pushed them to the YARN blocklist: {}",
+                excludedHosts.size(),
+                excludedHosts);
     }
 
     @Override
@@ -420,25 +462,39 @@ public class YarnResourceManagerDriver extends AbstractResourceManagerDriver<Yar
                         .iterator();
 
         int numAccepted = 0;
+        int numExcluded = 0;
         while (containerIterator.hasNext() && pendingContainerRequestIterator.hasNext()) {
             final Container container = containerIterator.next();
             final AMRMClient.ContainerRequest pendingRequest =
                     pendingContainerRequestIterator.next();
-            final ResourceID resourceId = getContainerResourceId(container);
 
             final CompletableFuture<YarnWorkerNode> requestResourceFuture =
                     pendingRequestResourceFutures.poll();
             Preconditions.checkState(requestResourceFuture != null);
 
-            if (pendingRequestResourceFutures.isEmpty()) {
-                requestResourceFutures.remove(taskExecutorProcessSpec);
+            if (isExcludedHost(container)) {
+                handleExcludedContainer(
+                        container,
+                        pendingRequest,
+                        requestResourceFuture,
+                        taskExecutorProcessSpec,
+                        resource,
+                        priority);
+                numExcluded++;
+                continue;
             }
+
+            final ResourceID resourceId = getContainerResourceId(container);
 
             requestResourceFuture.complete(new YarnWorkerNode(container, resourceId));
             startTaskExecutorInContainerAsync(container, taskExecutorProcessSpec, resourceId);
             removeContainerRequest(pendingRequest);
 
             numAccepted++;
+        }
+
+        if (pendingRequestResourceFutures.isEmpty()) {
+            requestResourceFutures.remove(taskExecutorProcessSpec);
         }
 
         int numExcess = 0;
@@ -448,11 +504,50 @@ public class YarnResourceManagerDriver extends AbstractResourceManagerDriver<Yar
         }
 
         log.info(
-                "Accepted {} requested containers, returned {} excess containers, {} pending container requests of resource {}.",
+                "Accepted {} requested containers, excluded {} containers on excluded hosts, returned {} excess containers, "
+                        + "{} pending container requests of resource {}.",
                 numAccepted,
+                numExcluded,
                 numExcess,
                 pendingRequestResourceFutures.size(),
                 resource);
+    }
+
+    private boolean isExcludedHost(Container container) {
+        if (excludedHosts.isEmpty()) {
+            return false;
+        }
+        final String host = container.getNodeId().getHost();
+        return host != null && excludedHosts.contains(host.toLowerCase());
+    }
+
+    /**
+     * Release the container that landed on an excluded host, re-issue a container request so that
+     * YARN will allocate a new container elsewhere, and keep the original {@link CompletableFuture}
+     * pending so that the caller is not signalled a success on an excluded host.
+     */
+    private void handleExcludedContainer(
+            Container container,
+            AMRMClient.ContainerRequest pendingRequest,
+            CompletableFuture<YarnWorkerNode> requestResourceFuture,
+            TaskExecutorProcessSpec taskExecutorProcessSpec,
+            Resource resource,
+            Priority priority) {
+        final String host = container.getNodeId().getHost();
+        log.warn(
+                "Container {} allocated on excluded host {}. Releasing it and re-issuing the request.",
+                container.getId(),
+                host);
+        returnExcessContainer(container);
+        removeContainerRequest(pendingRequest);
+        addContainerRequest(resource, priority);
+        requestResourceFutures
+                .computeIfAbsent(taskExecutorProcessSpec, ignore -> new LinkedList<>())
+                .add(requestResourceFuture);
+        log.info(
+                "Successfully released container {} on excluded host {} and re-issued a new container request.",
+                container.getId(),
+                host);
     }
 
     private int getNumRequestedNotAllocatedWorkers() {

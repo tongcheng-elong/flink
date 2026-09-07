@@ -209,6 +209,12 @@ The memory configurations for JobManager and TaskManager processes will be respe
 
 Failed containers (including the JobManager) are replaced by YARN. The maximum number of JobManager container restarts is configured via [yarn.application-attempts]({{< ref "docs/deployment/config" >}}#yarn-application-attempts) (default 1). The YARN Application will fail once all attempts are exhausted.
 
+#### Excluding TaskManager Hosts
+
+You can prevent Flink from starting TaskManagers on a specific set of hosts with the [yarn.taskmanager.excluded-hosts]({{< ref "docs/deployment/config" >}}#yarn-taskmanager-excluded-hosts) configuration option. The value is a semicolon-separated list of hostnames. Matching against the YARN-allocated container's host is case-insensitive and ignores surrounding whitespace.
+
+Configured hosts are pushed to the YARN application-level blocklist at startup so that the YARN scheduler should not allocate new containers on those nodes. As a defensive measure, if a container is nevertheless allocated on an excluded host (for example because it was recovered from a previous application attempt), Flink will release that container and immediately re-issue a new container request instead of starting a TaskExecutor on it.
+
 ### High-Availability on YARN
 
 High-Availability on YARN is achieved through a combination of YARN and a [high availability service]({{< ref "docs/deployment/ha/overview" >}}).
